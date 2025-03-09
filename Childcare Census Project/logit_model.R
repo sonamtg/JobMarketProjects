@@ -65,7 +65,8 @@ logit_results %>%
     digits = c(0, 3, 3, 3, 3, 3)) %>%
   kable_styling(
     bootstrap_options = c("striped", "hover", "condensed")
-  )
+  ) %>%
+save_kable("logit_results.png")
 
 
 # I created an indicator variable to find whether a parent is late in picking up their child. 
