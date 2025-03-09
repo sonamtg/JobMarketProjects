@@ -50,7 +50,7 @@ logit_results <- tidy(logit_model) %>%
       term == "day_of_the_week4" ~ "Wednesday",
       term == "day_of_the_week5" ~ "Thursday",
       term == "day_of_the_week6" ~ "Friday",
-      term == "day_of_the_week7" ~ "Friday",
+      term == "day_of_the_week7" ~ "Saturday",
       term == "booked_hours" ~ "Booked Hours"
     ),
     odds_ratio = exp(estimate) # Calculate odds ratios
