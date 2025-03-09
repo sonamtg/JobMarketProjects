@@ -4,7 +4,8 @@
 
 ### Data
 - **childcare_data.csv**  
-  - A simulated 
+  - A hypothetical data describing the flow of children in a 24-hour childcare center, where parents can drop off children for temporary backup care. Children are assigned to caregivers working in shifts, starting at a set time and staying until all children in their care are picked up (which may occasionally be past the end of their scheduled shift). Children who arrive are assigned to the first available caregiver. If no caregiver is available, a child (and the adult accompanying them) will wait for the first available caregiver.
+
 
 ### Code
 - Life Expectancy.Rmd
