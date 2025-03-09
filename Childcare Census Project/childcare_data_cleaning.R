@@ -2,6 +2,7 @@
 library(tidyverse)
 library(broom) 
 library(kableExtra)
+library(webshot2)
 
 
 childcare_data <- read_csv("childcare_data.csv")
