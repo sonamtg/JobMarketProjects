@@ -1,0 +1,385 @@
+---
+title: "Cleaning the offer acceptance data"
+author: "Nicholas L. Wood, PhD, Sonam T Gurung"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(dplyr)
+library(stringr)
+library(readr)
+library(data.table)
+```
+
+# Reading in the Offer Acceptance dataset, Donor Hospital, and Transplant Hospital dataset
+
+```{r}
+
+#offer_accep_data <- read_csv("//CDRG-FS-P01/Rockswold/2024/custom_data/ki_offer_data_2024-01-01_to_2024-01-15.csv")
+
+#offer_accep_data <- read_csv("//CDRG-FS-P01/Rockswold/2024/custom_data/ki_offer_data_2024-01-01_to_2024-04-30.csv")
+
+donor_hosp <- read.csv("//CDRG-FS-P01/Rockswold/2024/custom_data/donor_hospital_locations.csv")
+
+transp_cen <- read_csv("//CDRG-FS-P01/Rockswold/2024/custom_data/transplant_center_locations.csv")
+
+#offer_accep_data <- fread("//CDRG-FS-P01/Rockswold/2024/custom_data/ki_offer_data_2024-01-01_to_2024-04-30.csv")
+
+## this is the 4 month offer acceptance data, which also has donor and patient characteristics
+
+offer_accep_data <- fread("//CDRG-FS-P01/Rockswold/2024/custom_data/ki_offer_data_2024-01-01_to_2024-05-01.csv")
+
+
+```
+
+```{r}
+
+offer_accep_data_test <- offer_accep_data
+
+offer_accep_data_test <- offer_accep_data_test %>% 
+  mutate(don_id = trimws(don_id))
+
+#---------- If the same donor id appears in more than one match run, keep the latest match run info only ----------------------------#
+
+offer_accep_data_test <- offer_accep_data_test %>% 
+  group_by(don_id) %>% 
+  slice_max(match_submit_dt) %>% 
+  ungroup()
+
+num_match_runs_don <- offer_accep_data_test %>% 
+  group_by(don_id) %>% 
+  summarize(count = length(unique(match_id))) %>% 
+  ungroup()
+
+#----------- Removing the bypassed offers ----------#
+
+offer_accep_data_test <- offer_accep_data_test %>% 
+  filter(offer_accept != "B")
+
+#----------- Removing offers with missing offer acceptance information -------#
+
+sum(is.na(offer_accep_data_test$offer_accept))
+
+### No missing offer acceptance rows, so we move on
+
+#------------ Removing match runs where no offer was accepted -----------#
+
+### Create a df with all match ids without any acceptance
+
+rejected_match_id_df <- offer_accep_data_test %>% 
+  group_by(match_id)  %>%
+  summarize(all_rejects = all(offer_accept != "Y")) %>% 
+  filter(all_rejects == TRUE) %>% 
+  ungroup()
+
+### Store the match ids in a vector
+
+rejected_match_id <- rejected_match_id_df$match_id
+
+### Filter out match id rows without any acceptance
+
+offer_accep_data_test <- offer_accep_data_test %>% 
+  group_by(match_id) %>% 
+  mutate(all_rejected_match_id = match_id %in% rejected_match_id) %>% 
+  filter(all_rejected_match_id == FALSE) %>% 
+  ungroup()
+
+#---------- Removing offers on a match run after the last accepted offer -----------#
+
+### First, let's order the dataset by match id and the candidate's ranking in the match run, and the the comma indicates the ordering is for the rows
+
+### Important to order by the sequence num as the code later on assumes it is in order
+
+offer_accep_data_test <- offer_accep_data_test[order(offer_accep_data_test$match_id, offer_accep_data_test$ptr_sequence_num), ]
+
+# Split up into match runs that have 2 "Y"s and 1 "Y" respectively
+
+match_id_Y_count <- offer_accep_data_test %>% 
+  group_by(match_id) %>% 
+  summarize(count_yes = sum(offer_accept == "Y"))
+
+### No match runs with 0 "Y"s
+
+
+### Store the match run ids with 1 and 2 Yes respectively
+
+match_id_1Y <- c()
+match_id_2Y <- c()
+
+for (i in 1:nrow(match_id_Y_count)){
+  if (match_id_Y_count$count_yes[i] == 2){
+    match_id_2Y <- c(match_id_2Y, match_id_Y_count$match_id[i])
+}
+  
+  else{
+     match_id_1Y <- c(match_id_1Y, match_id_Y_count$match_id[i])
+    
+  }
+  
+}
+
+### Create a new variable which is TRUE if the match run has two "Y"s and FALSE if one "Y"
+
+offer_accep_data_test <- offer_accep_data_test %>% 
+  mutate(is_2Y = match_id %in% match_id_2Y)
+
+### Create a df with match runs with 2 "Y"s
+
+offer_accep_data_test_2Y <- offer_accep_data_test %>% 
+  filter(is_2Y == TRUE)
+
+### Create a df with match runs with 1 "Y"
+
+offer_accep_data_test_1Y <- offer_accep_data_test %>% 
+  filter(is_2Y == FALSE)
+
+### Now, let's identify the first accepted offer for each match run dataset
+
+### For Match ids with 2 "Y"s, we drop everything after the last "Y"
+
+offer_accep_data_test_2Y <- offer_accep_data_test_2Y %>% 
+  group_by(match_id) %>% 
+  mutate(last_acc_seq_num = max(ptr_sequence_num[offer_accept %in% c("Y")])) %>% 
+  filter(ptr_sequence_num <= last_acc_seq_num) %>% 
+  ungroup()
+
+
+### Finding the seq num of the only Y and the first Z after the Y for each mach run
+
+### Drop everything after the first provisional acceptance following the acceptance
+
+### Assumption for this:- Assume that the program did not offer the kidney to anyone after the first provisional acceptance
+
+offer_accep_data_test_1Y <- offer_accep_data_test_1Y %>% 
+  group_by(match_id) %>% 
+  mutate(yes_ptr_seq_num = ptr_sequence_num[offer_accept == "Y"],
+         first_z = min(ptr_sequence_num[offer_accept == "Z" & ptr_sequence_num > yes_ptr_seq_num], na.rm = TRUE)) %>%
+  filter(ptr_sequence_num < first_z) %>% 
+  ungroup()
+
+  
+### ---- Old Approach - commented out, can ignore it --------------#####
+
+### For Match ids with 1 Yes, we drop all the Provisional acceptances (Zs) after the Yes and keep all the rejections (Ns) even after the Yes
+
+"Assumptions made for Match runswith single id:-
+1. The Yes is for a single kidney
+2. OPO notified everyone in the match run
+"
+
+# offer_accep_data_test_1Y <- offer_accep_data_test_1Y %>% 
+#   group_by(match_id) %>% 
+#   mutate(yes_ptr_seq_num = ptr_sequence_num[offer_accept == "Y"]) %>% 
+#   filter(((ptr_sequence_num > yes_ptr_seq_num) & offer_accept == "N") | (ptr_sequence_num <= yes_ptr_seq_num)) %>% 
+#   ungroup()
+
+####--------------------------------------------------------------------####
+
+
+### Join the two match run datasets after cleaning based on the number of "Y"s
+
+offer_accep_data_test_1Y <- offer_accep_data_test_1Y %>% 
+  select(-yes_ptr_seq_num, -first_z)
+
+offer_accep_data_test_2Y <- offer_accep_data_test_2Y %>% 
+  select(-last_acc_seq_num)
+
+offer_accep_data_test2 <- offer_accep_data_test_1Y %>% 
+  rbind(offer_accep_data_test_2Y) 
+
+  
+
+
+```
+
+```{r}
+
+
+#------------------ Removing duplicate offers of the same donor to the same candidate (i.e., for any given donor a candidate should have at most one offer). -----------#
+
+### How many donors have more than 1 Match runs
+
+num_match_runs_don <- offer_accep_data_test2 %>% 
+  group_by(don_id) %>% 
+  summarize(count = length(unique(match_id))) %>% 
+  ungroup()
+
+offer_accep_data_test2 <- offer_accep_data_test2[order(offer_accep_data_test2$don_id, offer_accep_data_test2$px_id), ]
+
+### Creating a new dataset that has more than one combination of the same donor and patient id
+
+dup_offers <- offer_accep_data_test2 %>% 
+  group_by(don_id, px_id) %>%
+  filter(n() > 1) %>% 
+  ungroup() 
+
+
+### Storing a new dataset without any duplicates
+
+non_dup_offers <- offer_accep_data_test2 %>% 
+  group_by(don_id, px_id) %>% 
+  filter(n() <= 1) %>% 
+  ungroup()
+
+### keeping the accepted offers if a single candidate has two or more offers for the same donor <- removed
+
+### Finding any combination of donor and patient id with at least one accept
+
+dup_offers2 <- dup_offers %>%
+  group_by(don_id, px_id) %>%
+  mutate(has_accept = any(offer_accept == "Y")) %>% 
+  ungroup() %>%
+  filter((has_accept)) # & (offer_accept == "Y")
+
+dup_offers2 <- dup_offers2[order(dup_offers2$don_id, dup_offers2$don_id, dup_offers2$px_id, dup_offers2$ptr_sequence_num), ]
+
+### If a donor shows up twice in the same match run, we remove the Rejections if they show up after the Accept, assuming the second offers were for dual kidneys
+
+### I used an indicator variable which is TRUE for the "Y" rows and FALSE for the "N" rows after the "Y"
+
+### Rows have to be sorted based on the sequence number if they have the same don id and px_id within the same match run
+
+dup_offers2 <- dup_offers2 %>% 
+  group_by(match_id, don_id, px_id) %>% 
+  mutate(acc_then_rej = 
+           ifelse(test = {offer_accept == 'Y' & lead(offer_accept) == 'N' & lead(match_id) == match_id}, 
+                  yes = TRUE,
+                  no = ifelse({offer_accept == 'N' & lag(offer_accept) == 'Y' & lag(match_id) == match_id},
+                              yes = FALSE,
+                              no = NA))) %>% 
+  ungroup()
+
+### Remove all the N's that show up after the Y within the same match run
+
+dup_offers2 <- dup_offers2 %>% 
+  filter(acc_then_rej | is.na(acc_then_rej))
+
+
+### In the same match run, if there is a reject first and then an accept, we keep both the rows
+
+dup_offers2 <- dup_offers2 %>% 
+  group_by(match_id, don_id, px_id) %>% 
+  mutate(rej_then_acc = 
+           ifelse(test = {offer_accept == 'N' & lead(offer_accept) == 'Y' & lead(match_id) == match_id},
+                  yes = TRUE, 
+                  no = ifelse({offer_accept == 'Y' & lag(offer_accept) == 'N' & lag(match_id) == match_id},
+                              yes = TRUE, 
+                              no = NA))) %>% 
+  ungroup() 
+
+### We can filter out the rows that have TRUE as we are keeping them
+
+dup_offers2 <- dup_offers2 %>% 
+  filter(is.na(rej_then_acc) | rej_then_acc)
+
+# The above code still leads to situations where there are more than one accepted offer, so the next part handles that situation, not anymore after the updated first step
+
+### if there are more than combination of the same donor id and px_id on different match runs, then we need to take the offer on the latest match run
+
+# dup_offers2 <- dup_offers2 %>%
+#   group_by(don_id, px_id) %>%
+#   mutate(multiple_mr = n() > 1) %>% 
+#   arrange(don_id, px_id) %>%
+#   slice_max(match_submit_dt) %>% 
+#   ungroup() 
+
+ 
+### When a single candidate appears more than once on the same match run, let's keep the offer with the lowest candidates rank (ptr_sequence_run).
+### This is for match runs without any acceptances (Ys)
+
+dup_offers3 <- dup_offers %>%
+   group_by(don_id, px_id) %>%
+  mutate(has_accept = any(offer_accept == "Y")) %>% # for a combination create a column whether to show whether Accept exists
+  ungroup() %>%
+  filter(!has_accept) %>%
+  group_by(match_id, don_id, px_id) %>%
+  arrange(ptr_sequence_num) %>%
+  slice_head(n = 1) %>%
+  ungroup() %>%
+  arrange(don_id, px_id)
+
+### if there are no accepted offers but more than one declined offer, then we need to take the offer on the latest match run
+
+# dup_offers3 <- dup_offers3 %>% 
+#   group_by(don_id, px_id) %>% 
+#   mutate(multiple_mr = n() > 1) %>%
+#   arrange(don_id, px_id) %>%
+#   slice_max(match_submit_dt) %>% 
+#   ungroup()
+
+
+
+# dup_offers2 <- dup_offers2 %>%
+#   select(-multiple_mr, -has_accept, -acc_then_rej, -rej_then_acc)
+
+dup_offers2 <- dup_offers2 %>%
+  select(-has_accept, -acc_then_rej, -rej_then_acc)
+
+# dup_offers3 <- dup_offers3 %>%
+#   select( -has_accept, -multiple_mr)
+
+dup_offers3 <- dup_offers3 %>%
+  select( -has_accept)
+
+# Joining the Non duplicate rows with the clean duplicate rows to get the complete clean version of the Offer acceptance dataset
+
+
+clean_offer_accep_data <- non_dup_offers %>%
+  rbind(dup_offers2) %>%
+  rbind(dup_offers3)
+
+repetition_clean_offer_accep <- clean_offer_accep_data %>%
+  group_by(don_id, px_id) %>%
+  filter(n() > 1)  %>%
+  arrange(match_id, don_id, px_id) %>% 
+  ungroup()
+
+dup_offers3  %>%
+  group_by(don_id, px_id)  %>%
+  arrange(don_id, px_id)  %>%
+  count(sort = TRUE) %>% 
+  ungroup()
+
+
+
+#-------------------- Converting remaining provisional acceptances to declines -------#
+
+clean_offer_accep_data <- clean_offer_accep_data %>% 
+  mutate(offer_accept = ifelse(offer_accept == "Z", "N", offer_accept))
+
+```
+
+
+```{r}
+# ------------------Joining the coordinates of the donor and transplant hospital to the Offer acceptance dataset----------------#
+
+### Keeping just the unique provide number, type and the coordinates to join with the offer acceptance dataset
+
+unique_dor_hosp_prov_num <- donor_hosp  %>%
+  select(provider_num, provider_mbr_ty, Latitude, Longitude)  %>%
+  mutate(provider_num = trimws(provider_num))  %>% # provider_num has whitespace, so let's remove it
+  distinct(provider_num, provider_mbr_ty, Latitude, Longitude)
+
+clean_offer_accep_data <- clean_offer_accep_data %>% 
+  mutate(don_hosp_provider_num = trimws(don_hosp_provider_num))
+
+
+clean_offer_accep_data <- clean_offer_accep_data  %>%
+  left_join(unique_dor_hosp_prov_num, by = c("don_hosp_provider_num" = "provider_num", "don_hosp_provider_ty" = "provider_mbr_ty"))  %>%
+  mutate(donor_hosp_latitude = Latitude,
+         donor_hosp_longitude = Longitude)  %>%
+  select(-Latitude, -Longitude)
+
+
+clean_offer_accep_data <- clean_offer_accep_data  %>%
+  left_join(transp_cen, by = c("listing_ctr_cd" = "ctr_cd", "listing_ctr_ty" = "ctr_ty"))  %>%
+  rename(transp_hosp_latitude = Latitude,
+         transp_hosp_longitude = Longitude)
+
+
+
+```
+

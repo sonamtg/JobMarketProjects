@@ -1,0 +1,196 @@
+---
+title: "Flight Data Cleaning Step"
+author: "Nicholas L. Wood, PhD, Sonam Gurung"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r}
+library(dplyr)
+library(readr)
+
+```
+
+
+```{r}
+
+airport_info <- read.csv("//CDRG-FS-P01/Rockswold/2024/Resources/Flights data/airport_info.csv")
+
+ontime_flights <- read.csv("//CDRG-FS-P01/Rockswold/2024/Resources/Flights data/ontime data jan 2023-2.csv")
+
+carrier_code_name <- read.csv("//CDRG-FS-P01/Rockswold/2024/Resources/Flights data/carrier_code_and_name.csv")
+
+airport_coords <- read.csv("//CDRG-FS-P01/Rockswold/2024/Resources/Flights data/coords_airport.csv")
+
+airport_name <- read.csv("//CDRG-FS-P01/Rockswold/2024/Resources/Flights data/airport name.csv")
+
+```
+
+# Start from here after reading in all the CSV files
+
+```{r}
+ 
+names(ontime_flights)
+ 
+names(ontime_flights)[names(ontime_flights)=="OP_UNIQUE_CARRIER"] <- "Carrier Code"
+ 
+names(carrier_code_name)[names(carrier_code_name)=="Code"] <- "Carrier Code"
+ 
+ 
+# Use the code of the airline to join with the name of the airlines
+ ontime_flights <- ontime_flights  %>%
+   left_join(carrier_code_name, by = "Carrier Code")  %>%
+   rename(FLIGHT_NAME = Description)
+
+# Selecting the necessary columns in the airport coordinates dataset
+ 
+airport_coords <- airport_coords %>%
+  select(AIRPORT_SEQ_ID, AIRPORT, DISPLAY_AIRPORT_NAME, LATITUDE, LONGITUDE)  
+  
+  # group_by(AIRPORT_SEQ_ID, AIRPORT, DISPLAY_AIRPORT_NAME) %>% 
+  # slice(1) %>% 
+  # ungroup()
+
+
+ 
+# Joining the Origin airport seq ID with the airport coordinates
+ 
+ontime_flights <- ontime_flights  %>%
+  left_join(airport_coords, by = c("ORIGIN_AIRPORT_SEQ_ID" = "AIRPORT_SEQ_ID"))  %>%
+  rename(ORIGIN_LATITUDE = LATITUDE,
+         ORIGIN_LONGITUDE = LONGITUDE,
+         ORIGIN_NAME = DISPLAY_AIRPORT_NAME) %>% 
+  select(-AIRPORT)
+ 
+ 
+ ontime_flights <- ontime_flights  %>%
+   left_join(airport_coords, by = c("DEST_AIRPORT_SEQ_ID" = "AIRPORT_SEQ_ID"))  %>%
+   rename(DEST_LATITUDE = LATITUDE,
+          DEST_LONGITUDE = LONGITUDE,
+          DEST_NAME = DISPLAY_AIRPORT_NAME) %>% 
+   select(-AIRPORT)
+ 
+ 
+ 
+ 
+class(ontime_flights$ORIGIN_AIRPORT_SEQ_ID)
+class(airport_coords$AIRPORT_SEQ_ID)
+  
+
+```
+
+
+# Old approach, long and tedious, no need to run this
+
+```{r}
+
+# identifying the unique carrier code in the on time flights data
+
+# names(ontime_flights)
+# 
+# names(ontime_flights)[names(ontime_flights)=="OP_UNIQUE_CARRIER"] <- "Carrier Code"
+# 
+# names(carrier_code_name)[names(carrier_code_name)=="Code"] <- "Carrier Code"
+# 
+# 
+# # Use the code of the airline to join with the name of the airlines
+# ontime_flights <- ontime_flights  %>%
+#   left_join(carrier_code_name, by = "Carrier Code")
+# 
+# 
+# 
+# # This is to join the on-time flights with the coordinates of the origin airport
+# 
+# origin_coords <- airport_coords
+# 
+# names(origin_coords)
+# 
+# names(origin_coords)[names(origin_coords)=="LAT_DEGREES"] <- "ORIGIN_LAT_DEGREES"
+# names(origin_coords)[names(origin_coords)=="LAT_HEMISPHERE"] <- "ORIGIN_LAT_HEMISPHERE"
+# names(origin_coords)[names(origin_coords)=="LATITUDE"] <- "ORIGIN_LATITUDE"
+# names(origin_coords)[names(origin_coords)=="LAT_MINUTES"] <- "ORIGIN_LAT_MINUTES"
+# names(origin_coords)[names(origin_coords)=="LAT_SECONDS"] <- "ORIGIN_LAT_SECONDS"
+# 
+# 
+# 
+# names(origin_coords)[names(origin_coords)=="LON_DEGREES"] <- "ORIGIN_LON_DEGREES"
+# names(origin_coords)[names(origin_coords)=="LON_HEMISPHERE"] <- "ORIGIN_LON_HEMISPHERE"
+# names(origin_coords)[names(origin_coords)=="LONGITUDE"] <- "ORIGIN_LONGITUDE"
+# names(origin_coords)[names(origin_coords)=="LON_MINUTES"] <- "ORIGIN_LON_MINUTES"
+# names(origin_coords)[names(origin_coords)=="LON_SECONDS"] <- "ORIGIN_LON_SECONDS"
+# 
+# names(origin_coords)
+# 
+# 
+# names(origin_coords)[names(origin_coords)=="AIRPORT_SEQ_ID"] <- "ORIGIN_AIRPORT_SEQ_ID"
+# 
+# 
+# # Use the Origin Airport ID to join with the coordinates of the origin airport
+# 
+# ontime_flights <- ontime_flights  %>%
+#   left_join(origin_coords, by = "ORIGIN_AIRPORT_SEQ_ID")
+# 
+# 
+# 
+# # This is to join the on-time flights with the coordinates of the dest airport
+# 
+# dest_coords <- airport_coords
+# 
+# names(dest_coords)
+# 
+# names(dest_coords)[names(dest_coords)=="LAT_DEGREES"] <- "DEST_LAT_DEGREES"
+# names(dest_coords)[names(dest_coords)=="LAT_HEMISPHERE"] <- "DEST_LAT_HEMISPHERE"
+# names(dest_coords)[names(dest_coords)=="LATITUDE"] <- "DEST_LATITUDE"
+# names(dest_coords)[names(dest_coords)=="LAT_MINUTES"] <- "DEST_LAT_MINUTES"
+# names(dest_coords)[names(dest_coords)=="LAT_SECONDS"] <- "DEST_LAT_SECONDS"
+# 
+# 
+# 
+# names(dest_coords)[names(dest_coords)=="LON_DEGREES"] <- "DEST_LON_DEGREES"
+# names(dest_coords)[names(dest_coords)=="LON_HEMISPHERE"] <- "DEST_LON_HEMISPHERE"
+# names(dest_coords)[names(dest_coords)=="LONGITUDE"] <- "DEST_LONGITUDE"
+# names(dest_coords)[names(dest_coords)=="LON_MINUTES"] <- "DEST_LON_MINUTES"
+# names(dest_coords)[names(dest_coords)=="LON_SECONDS"] <- "DEST_LON_SECONDS"
+# 
+# names(dest_coords)
+# 
+# 
+# names(dest_coords)[names(dest_coords)=="AIRPORT_SEQ_ID"] <- "DEST_AIRPORT_SEQ_ID"
+# 
+# 
+# # Use the Dest Airport ID to join with the coordinates of the Dest airport
+# 
+# ontime_flights <- ontime_flights  %>%
+#   left_join(dest_coords, by = "DEST_AIRPORT_SEQ_ID")
+# 
+# ontime_flights <- subset(ontime_flights, select = -c(AIRPORT.x, DISPLAY_AIRPORT_NAME.x, DISPLAY_AIRPORT_CITY_NAME_FULL.x, AIRPORT.y, DISPLAY_AIRPORT_NAME.y, DISPLAY_AIRPORT_CITY_NAME_FULL.y))
+# 
+# origin_name <- airport_name
+# 
+# names(origin_name)[names(origin_name)=="Code"] <- "ORIGIN"
+# 
+# names(origin_name)[names(origin_name)=="Description"] <- "ORIGIN_NAME"
+# 
+# dest_name <- airport_name
+# 
+# names(dest_name)[names(dest_name)=="Code"] <- "DEST"
+# 
+# names(dest_name)[names(dest_name)=="Description"] <- "DEST_NAME"
+# 
+# ontime_flights <- ontime_flights  %>%
+#   left_join(origin_name, by = "ORIGIN")
+# 
+# 
+# ontime_flights <- ontime_flights  %>%
+#   left_join(dest_name, by = "DEST")
+# 
+# 
+
+```
+
+
+
+

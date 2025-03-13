@@ -1,0 +1,1068 @@
+---
+title: "Offer Acceptance Model Preparation"
+author: "Nicholas L. Wood, PhD, Jon Miller, PhD, Sonam T Gurung"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(igraph)
+library(stringr)
+library(readr)
+library(tidyr)
+library(glmnet)
+library(Matrix)
+library(data.table)
+```
+
+```{r}
+
+# clean_offer_accep_data_feat <- fread("//CDRG-FS-P01/Rockswold/2024/custom_data/clean_offer_accep_data_features.csv")
+# 
+
+
+```
+
+
+```{r}
+
+clean_offer_accep_data_feat_model <- clean_offer_accep_data_feat %>% 
+  mutate(offer_accept = ifelse(offer_accept == "Y", 1, 0),
+         dist_categ = ifelse(!is_flying, "Too close",
+                            ifelse(is_direct, "Direct", "Multiple")),
+         is_round_cat = ifelse(is.na(is_round), "Not flying",
+                               ifelse(is_round, "Yes", "No")),
+         freq_daily = ifelse(is.na(freq_daily), 0, freq_daily),
+         num_layover= ifelse(is.na(num_layover), 0, num_layover),
+         origin_airport_num_dep = ifelse(is.na(origin_airport_num_dep), 0, origin_airport_num_dep),
+         dest_airport_num_arr = ifelse(is.na(dest_airport_num_arr), 0, dest_airport_num_arr),
+
+         is_top_20_origin_categ = ifelse(is.na(is_top_20_origin), "Not flying",
+                                         ifelse(is_top_20_origin, "Yes", "No")),
+         is_top_20_dest_categ = ifelse(is.na(is_top_20_dest), "Not flying",
+                                         ifelse(is_top_20_dest, "Yes", "No")),
+         origin_num_dest_airports = ifelse(is.na(origin_num_dest_airports), 0, origin_num_dest_airports),
+         dest_num_origin_airports = ifelse(is.na(dest_num_origin_airports), 0, dest_num_origin_airports),
+         freq_daily_sq = (freq_daily)^2,
+         freq_daily_cat = as.factor(ifelse(freq_daily == 0, "Zero",
+                             ifelse(freq_daily == 1, "One",
+                                    ifelse(freq_daily == 2, "Two",
+                                           ifelse(freq_daily == 3, "Three",
+                                                  ifelse(freq_daily == 4, "Four",
+                                                         ifelse(freq_daily >= 5 & freq_daily <= 6, "5 to 6",
+                                                                ifelse(freq_daily >= 7 & freq_daily <= 8, "7 to 8",
+                                                                       ifelse(freq_daily >= 9 & freq_daily <= 10, "9 to 10",
+                                                                              ifelse(freq_daily >= 11 & freq_daily <= 12, "11 to 12",
+                                                                                     ifelse(freq_daily >= 13 & freq_daily <= 15, "13 to 15",
+                                                                                            ifelse(freq_daily >= 16 & freq_daily <= 32, "16 to 32", NA)))))))))))),
+         num_layover_cat = as.factor(ifelse(num_layover == 0, "Zero",
+                                            ifelse(num_layover == 1, "One",
+                                                   ifelse(num_layover == 2 | num_layover == 3, "Two or Three",
+                                                                 NA)))),
+         distance_donor_hosp_to_airport = ifelse(is.na(distance_donor_hosp_to_airport), 0, distance_donor_hosp_to_airport),
+         
+         distance_airport_to_transp_hosp = ifelse(is.na(distance_airport_to_transp_hosp), 0, distance_airport_to_transp_hosp),
+         
+         distance_origin_airport_to_dest_airport = ifelse(is.na(distance_origin_airport_to_dest_airport), 0, distance_origin_airport_to_dest_airport), 
+         
+         distance_donor_hosp_to_airport_cat = as.factor(
+  ifelse(distance_donor_hosp_to_airport == 0, "Zero",
+         ifelse(distance_donor_hosp_to_airport > 0 & distance_donor_hosp_to_airport <= 0.5, "0 to 0.5",
+                ifelse(distance_donor_hosp_to_airport > 0.5 & distance_donor_hosp_to_airport <= 1, "0.5 to 1",
+                       ifelse(distance_donor_hosp_to_airport > 1 & distance_donor_hosp_to_airport <= 2, "1 to 2",
+                                     ifelse(distance_donor_hosp_to_airport > 2 & distance_donor_hosp_to_airport <= 3, "2 to 3",
+                                            ifelse(distance_donor_hosp_to_airport > 3 & distance_donor_hosp_to_airport <= 3.5, "3 to 3.5",
+                                                   ifelse(distance_donor_hosp_to_airport > 3.5 & distance_donor_hosp_to_airport <= 4, "3.5 to 4",
+                                                   ifelse(distance_donor_hosp_to_airport > 4 & distance_donor_hosp_to_airport <= 4.5, "4 to 4.5",
+                                                          ifelse(distance_donor_hosp_to_airport > 4.5 & distance_donor_hosp_to_airport <= 5, "4.5 to 5",
+                                                          ifelse(distance_donor_hosp_to_airport > 5 & distance_donor_hosp_to_airport <= 5.5, "5 to 5.5",
+                                                                 ifelse(distance_donor_hosp_to_airport > 5.5 & distance_donor_hosp_to_airport <= 6, "5.5 to 6",
+                                                                 ifelse(distance_donor_hosp_to_airport > 6 & distance_donor_hosp_to_airport <= 6.5, "6 to 6.5",
+                                                                        ifelse(distance_donor_hosp_to_airport > 6.5 & distance_donor_hosp_to_airport <= 7, "6.5 to 7",
+                                                                        ifelse(distance_donor_hosp_to_airport > 7 & distance_donor_hosp_to_airport <= 8, "7 to 8",
+                                                                               ifelse(distance_donor_hosp_to_airport > 8 & distance_donor_hosp_to_airport <= 9, "8 to 9",
+                                                                                      ifelse(distance_donor_hosp_to_airport > 9 & distance_donor_hosp_to_airport <= 10, "9 to 10",
+                                                                                             ifelse(distance_donor_hosp_to_airport > 10 & distance_donor_hosp_to_airport <= 11, "10 to 11",
+                                                                                                    ifelse(distance_donor_hosp_to_airport > 11 & distance_donor_hosp_to_airport <= 12, "11 to 12",
+                                                                                                           ifelse(distance_donor_hosp_to_airport > 12 & distance_donor_hosp_to_airport <= 14, "12 to 14",
+                                                                                                                  ifelse(distance_donor_hosp_to_airport > 14 & distance_donor_hosp_to_airport <= 16, "14 to 16",
+                                                                                                                  ifelse(distance_donor_hosp_to_airport > 16 & distance_donor_hosp_to_airport <= 20, "16 to 20",
+                                                                                                                  ifelse(distance_donor_hosp_to_airport > 20 & distance_donor_hosp_to_airport <= 30, "20 to 30",
+                                                                                                                         ifelse(distance_donor_hosp_to_airport > 30 & distance_donor_hosp_to_airport <= 40, "30 to 40",
+                                                                                                                         ifelse(distance_donor_hosp_to_airport > 40 & distance_donor_hosp_to_airport <= 80, "40 to 80", NA))))))))))))))))))))))))),
+  
+  num_days_week = ifelse(is.na(num_days_week), 0, num_days_week),
+  
+  num_days_week_cat = as.factor(ifelse(num_days_week == 0, "Zero",
+                                   ifelse(num_days_week >= 1 & num_days_week <= 2, "1 to 2",
+                                          ifelse(num_days_week >= 3 & num_days_week <= 5, "3 to 5",
+                                                 ifelse(num_days_week == 6, "6",
+                                                        ifelse(num_days_week == 7, "7", NA)))))),
+  
+  num_days_week_cat_Zero = ifelse(num_days_week_cat == "Zero", TRUE, FALSE),
+  num_days_week_cat_1_to_2 = ifelse(num_days_week_cat == "1 to 2", TRUE, FALSE),
+  num_days_week_cat_3_to_5 = ifelse(num_days_week_cat == "3 to 5", TRUE, FALSE),
+  num_days_week_cat_6 = ifelse(num_days_week_cat == "6", TRUE, FALSE),
+  num_days_week_cat_7 = ifelse(num_days_week_cat == "7", TRUE, FALSE),
+
+ 
+  
+
+  distance_airport_to_transp_hosp_cat = as.factor(
+  ifelse(distance_airport_to_transp_hosp == 0, "Zero",
+         ifelse(distance_airport_to_transp_hosp > 0 & distance_airport_to_transp_hosp <= 0.5, "0 to 0.5",
+                ifelse(distance_airport_to_transp_hosp > 0.5 & distance_airport_to_transp_hosp <= 1, "0.5 to 1",
+                       ifelse(distance_airport_to_transp_hosp > 1 & distance_airport_to_transp_hosp <= 2, "1 to 2",
+                                     ifelse(distance_airport_to_transp_hosp > 2 & distance_airport_to_transp_hosp <= 3, "2 to 3",
+                                            ifelse(distance_airport_to_transp_hosp > 3 & distance_airport_to_transp_hosp <= 4, "3 to 4",
+                                                   ifelse(distance_airport_to_transp_hosp > 4 & distance_airport_to_transp_hosp <= 4.5, "4 to 4.5",
+                                                          ifelse(distance_airport_to_transp_hosp > 4.5 & distance_airport_to_transp_hosp <= 5, "4.5 to 5",
+                                                          ifelse(distance_airport_to_transp_hosp > 5 & distance_airport_to_transp_hosp <= 5.5, "5 to 5.5",
+                                                                 ifelse(distance_airport_to_transp_hosp > 5.5 & distance_airport_to_transp_hosp <= 6, "5.5 to 6",
+                                                                 ifelse(distance_airport_to_transp_hosp > 6 & distance_airport_to_transp_hosp <= 6.5, "6 to 6.5",
+                                                                        ifelse(distance_airport_to_transp_hosp > 6.5 & distance_airport_to_transp_hosp <= 7, "6.5 to 7",
+                                                                        ifelse(distance_airport_to_transp_hosp > 7 & distance_airport_to_transp_hosp <= 7.5, "7 to 7.5",
+                                                                               ifelse(distance_airport_to_transp_hosp > 7.5 & distance_airport_to_transp_hosp <= 8, "7.5 to 8",
+                                                                             
+                                                                               ifelse(distance_airport_to_transp_hosp > 8 & distance_airport_to_transp_hosp <= 8.5, "8 to 8.5",
+                                                                                      ifelse(distance_airport_to_transp_hosp > 8.5 & distance_airport_to_transp_hosp <= 9, "8.5 to 9",
+                                                                             
+                                                                                      ifelse(distance_airport_to_transp_hosp > 9 & distance_airport_to_transp_hosp <= 10, "9 to 10",
+                                                                                             ifelse(distance_airport_to_transp_hosp > 10 & distance_airport_to_transp_hosp <= 11, "10 to 11",
+                                                                                                    ifelse(distance_airport_to_transp_hosp > 11 & distance_airport_to_transp_hosp <= 12, "11 to 12",
+                                                                                                           ifelse(distance_airport_to_transp_hosp > 12 & distance_airport_to_transp_hosp <= 14, "12 to 14",
+                                                                                                                  ifelse(distance_airport_to_transp_hosp > 14 & distance_airport_to_transp_hosp <= 18, "14 to 18",
+                                                                                                                  ifelse(distance_airport_to_transp_hosp > 18 & distance_airport_to_transp_hosp <= 20, "18 to 20",
+                                                                                                                  ifelse(distance_airport_to_transp_hosp > 20 & distance_airport_to_transp_hosp <= 60, "20 to 60", NA)))))))))))))))))))))))),
+  
+  origin_num_dest_airports_cat = ifelse(origin_num_dest_airports == 0, "Zero",
+                                        ifelse(origin_num_dest_airports >= 1 & origin_num_dest_airports <= 2, "1 to 2",
+                                               ifelse(origin_num_dest_airports >= 3 & origin_num_dest_airports <= 4, "3 to 4",
+                                                      ifelse(origin_num_dest_airports == 5, "5", 
+                                                             ifelse(origin_num_dest_airports >= 6 & origin_num_dest_airports <= 7, "6 to 7",
+                                                                    ifelse(origin_num_dest_airports == 8, "8",
+                                                                           ifelse(origin_num_dest_airports >= 9 & origin_num_dest_airports <= 11, "9 to 11",
+                                                                                         ifelse(origin_num_dest_airports == 12, "12",
+                                                                                         ifelse(origin_num_dest_airports >= 13 & origin_num_dest_airports <= 14, "13 to 14", 
+                                                                                                ifelse(origin_num_dest_airports >= 15 & origin_num_dest_airports <= 17, "15 to 17",
+                                                                                                              ifelse(origin_num_dest_airports == 18, "18",
+                                                                                                              ifelse(origin_num_dest_airports >= 19 & origin_num_dest_airports <= 20, "19 to 20",
+                                                                                                                            ifelse(origin_num_dest_airports >= 21 & origin_num_dest_airports <= 24, "21 to 24",
+                                                                                                                                          ifelse(origin_num_dest_airports >= 25 & origin_num_dest_airports <= 26, "25 to 26",
+                                                                                                                                                 ifelse(origin_num_dest_airports >= 27 & origin_num_dest_airports <= 30, "27 to 30",
+                                                                                                                                                               ifelse(origin_num_dest_airports >= 31 & origin_num_dest_airports <= 34, "31 to 34",
+                                                                                                                                                                      ifelse(origin_num_dest_airports >= 35 & origin_num_dest_airports <= 40, "35 to 40",
+                                                                                                                                                                             ifelse(origin_num_dest_airports >= 41 & origin_num_dest_airports <= 50, "41 to 50",
+                                                                                                                                                                                    ifelse(origin_num_dest_airports >= 51 & origin_num_dest_airports <= 60, "51 to 60",
+                                                                                                                                                                                           ifelse(origin_num_dest_airports >= 61 & origin_num_dest_airports <= 70, "61 to 70",
+                                                                                                                                                                                                  ifelse(origin_num_dest_airports >= 71 & origin_num_dest_airports <= 80, "71 to 80",
+                                                                                                                                                                                                         ifelse(origin_num_dest_airports >= 81 & origin_num_dest_airports <= 90, "81 to 90",
+                                                                                                                                                                                                                ifelse(origin_num_dest_airports >= 91 & origin_num_dest_airports <= 110, "91 to 110",
+                                                                                                                                                                                                                       ifelse(origin_num_dest_airports >= 111 & origin_num_dest_airports <= 135, "111 to 135",
+                                                                                                                                                                                                                              ifelse(origin_num_dest_airports >= 136 & origin_num_dest_airports <= 180, "136 to 180",
+                                                                                                                                    NA)))))))))))))))))))))))))) %>% 
+  
+   mutate(num_layover_cat_Zero = ifelse(num_layover_cat == "Zero", 1, 0),
+         num_layover_cat_One = ifelse(num_layover_cat == "One", 1, 0),
+         num_layover_cat_Two_Three = ifelse(num_layover == "Two or Three", 1, 0),
+         
+         dist_categ_too_close = ifelse(dist_categ == "Too close", 1, 0),
+         dist_categ_direct = ifelse(dist_categ == "Direct", 1, 0),
+         dist_categ_multiple = ifelse(dist_categ == "Multiple", 1, 0),
+         
+         freq_daily_cat_Zero = ifelse(freq_daily_cat == "Zero", 1, 0),
+         freq_daily_cat_One = ifelse(freq_daily_cat == "One", 1, 0),
+         freq_daily_cat_Two = ifelse(freq_daily_cat == "Two", 1, 0),
+         freq_daily_cat_Three = ifelse(freq_daily_cat == "Three", 1, 0),
+         freq_daily_cat_Four = ifelse(freq_daily_cat == "Four", 1, 0),
+         freq_daily_cat_5_to_6 = ifelse(freq_daily_cat == "5 to 6", 1, 0),
+         freq_daily_cat_7_to_8 = ifelse(freq_daily_cat == "7 to 8", 1, 0),
+         freq_daily_cat_9_to_10 = ifelse(freq_daily_cat == "9 to 10", 1, 0),
+         freq_daily_cat_11_to_12 = ifelse(freq_daily_cat == "11 to 12", 1, 0),
+         freq_daily_cat_13_to_15 = ifelse(freq_daily_cat == "13 to 15", 1, 0),
+         freq_daily_cat_16_to_32 = ifelse(freq_daily_cat == "16 to 32", 1, 0),
+         
+         is_top_20_origin_categ_Not_flying = ifelse(is_top_20_origin_categ == "Not flying", 1, 0),
+         is_top_20_origin_categ_Yes = ifelse(is_top_20_origin_categ == "Yes", 1, 0),
+         is_top_20_origin_categ_No = ifelse(is_top_20_origin_categ == "No", 1, 0),
+         
+         is_top_20_dest_categ_Not_flying = ifelse(is_top_20_dest_categ == "Not flying", 1, 0),
+         is_top_20_dest_categ_Yes = ifelse(is_top_20_dest_categ == "Yes", 1, 0),
+         is_top_20_dest_categ_No = ifelse(is_top_20_dest_categ == "No", 1, 0),
+         
+         distance_donor_hosp_to_airport_cat_Zero = ifelse(distance_donor_hosp_to_airport_cat == "Zero", 1, 0),
+         distance_donor_hosp_to_airport_cat_0_to_0.5 = ifelse(distance_donor_hosp_to_airport_cat == "0 to 0.5", 1, 0),
+         distance_donor_hosp_to_airport_cat_0.5_to_1 = ifelse(distance_donor_hosp_to_airport_cat == "0.5 to 1", 1, 0),
+         distance_donor_hosp_to_airport_cat_1_to_2 = ifelse(distance_donor_hosp_to_airport_cat == "1 to 2", 1, 0),
+         distance_donor_hosp_to_airport_cat_2_to_3 = ifelse(distance_donor_hosp_to_airport_cat == "2 to 3", 1, 0),
+         distance_donor_hosp_to_airport_cat_3_to_3.5 = ifelse(distance_donor_hosp_to_airport_cat == "3 to 3.5", 1, 0),
+         distance_donor_hosp_to_airport_cat_3.5_to_4 = ifelse(distance_donor_hosp_to_airport_cat == "3.5 to 4", 1, 0),
+         distance_donor_hosp_to_airport_cat_4_to_4.5 = ifelse(distance_donor_hosp_to_airport_cat == "4 to 4.5", 1, 0),
+         distance_donor_hosp_to_airport_cat_4.5_to_5 = ifelse(distance_donor_hosp_to_airport_cat == "4.5 to 5", 1, 0),
+         distance_donor_hosp_to_airport_cat_5_to_5.5 = ifelse(distance_donor_hosp_to_airport_cat == "5 to 5.5", 1, 0),
+         distance_donor_hosp_to_airport_cat_5.5_to_6 = ifelse(distance_donor_hosp_to_airport_cat == "5.5 to 6", 1, 0),
+         distance_donor_hosp_to_airport_cat_6_to_6.5 = ifelse(distance_donor_hosp_to_airport_cat == "6 to 6.5", 1, 0),
+         distance_donor_hosp_to_airport_cat_6.5_to_7 = ifelse(distance_donor_hosp_to_airport_cat == "6.5 to 7", 1, 0),
+         distance_donor_hosp_to_airport_cat_7_to_8 = ifelse(distance_donor_hosp_to_airport_cat == "7 to 8", 1, 0),
+         distance_donor_hosp_to_airport_cat_8_to_9 = ifelse(distance_donor_hosp_to_airport_cat == "8 to 9", 1, 0),
+         distance_donor_hosp_to_airport_cat_9_to_10 = ifelse(distance_donor_hosp_to_airport_cat == "9 to 10", 1, 0),
+         distance_donor_hosp_to_airport_cat_10_to_11 = ifelse(distance_donor_hosp_to_airport_cat == "10 to 11", 1, 0),
+         distance_donor_hosp_to_airport_cat_11_to_12 = ifelse(distance_donor_hosp_to_airport_cat == "11 to 12", 1, 0),
+         distance_donor_hosp_to_airport_cat_12_to_14 = ifelse(distance_donor_hosp_to_airport_cat == "12 to 14", 1, 0),
+         distance_donor_hosp_to_airport_cat_14_to_16 = ifelse(distance_donor_hosp_to_airport_cat == "14 to 16", 1, 0),
+         distance_donor_hosp_to_airport_cat_16_to_20 = ifelse(distance_donor_hosp_to_airport_cat == "16 to 20", 1, 0),
+         distance_donor_hosp_to_airport_cat_20_to_30 = ifelse(distance_donor_hosp_to_airport_cat == "20 to 30", 1, 0),
+         distance_donor_hosp_to_airport_cat_30_to_40 = ifelse(distance_donor_hosp_to_airport_cat == "30 to 40", 1, 0),
+         distance_donor_hosp_to_airport_cat_40_to_80 = ifelse(distance_donor_hosp_to_airport_cat == "40 to 80", 1, 0),
+         
+         distance_airport_to_transp_hosp_cat_Zero = ifelse(distance_airport_to_transp_hosp_cat == "Zero", 1, 0),
+         distance_airport_to_transp_hosp_cat_0_to_0.5 = ifelse(distance_airport_to_transp_hosp_cat == "0 to 0.5", 1, 0),
+         distance_airport_to_transp_hosp_cat_0.5_to_1 = ifelse(distance_airport_to_transp_hosp_cat == "0.5 to 1", 1, 0),
+         distance_airport_to_transp_hosp_cat_1_to_2 = ifelse(distance_airport_to_transp_hosp_cat == "1 to 2", 1, 0),
+         distance_airport_to_transp_hosp_cat_2_to_3 = ifelse(distance_airport_to_transp_hosp_cat == "2 to 3", 1, 0),
+         distance_airport_to_transp_hosp_cat_3_to_4 = ifelse(distance_airport_to_transp_hosp_cat == "3 to 4", 1, 0),
+         distance_airport_to_transp_hosp_cat_4_to_4.5 = ifelse(distance_airport_to_transp_hosp_cat == "4 to 4.5", 1, 0),
+         distance_airport_to_transp_hosp_cat_4.5_to_5 = ifelse(distance_airport_to_transp_hosp_cat == "4.5 to 5", 1, 0),
+         distance_airport_to_transp_hosp_cat_5_to_5.5 = ifelse(distance_airport_to_transp_hosp_cat == "5 to 5.5", 1, 0),
+         distance_airport_to_transp_hosp_cat_5.5_to_6 = ifelse(distance_airport_to_transp_hosp_cat == "5.5 to 6", 1, 0),
+         distance_airport_to_transp_hosp_cat_6_to_6.5 = ifelse(distance_airport_to_transp_hosp_cat == "6 to 6.5", 1, 0),
+         distance_airport_to_transp_hosp_cat_6.5_to_7 = ifelse(distance_airport_to_transp_hosp_cat == "6.5 to 7", 1, 0),
+         distance_airport_to_transp_hosp_cat_7_to_7.5 = ifelse(distance_airport_to_transp_hosp_cat == "7 to 7.5", 1, 0),
+         distance_airport_to_transp_hosp_cat_7.5_to_8 = ifelse(distance_airport_to_transp_hosp_cat == "7.5 to 8", 1, 0),
+         distance_airport_to_transp_hosp_cat_8_to_8.5 = ifelse(distance_airport_to_transp_hosp_cat == "8 to 8.5", 1, 0),
+         distance_airport_to_transp_hosp_cat_8.5_to_9 = ifelse(distance_airport_to_transp_hosp_cat == "8.5 to 9", 1, 0),
+         distance_airport_to_transp_hosp_cat_9_to_10 = ifelse(distance_airport_to_transp_hosp_cat == "9 to 10", 1, 0),
+         distance_airport_to_transp_hosp_cat_10_to_11 = ifelse(distance_airport_to_transp_hosp_cat == "10 to 11", 1, 0),
+         distance_airport_to_transp_hosp_cat_11_to_12 = ifelse(distance_airport_to_transp_hosp_cat == "11 to 12", 1, 0),
+         distance_airport_to_transp_hosp_cat_12_to_14 = ifelse(distance_airport_to_transp_hosp_cat == "12 to 14", 1, 0),
+         distance_airport_to_transp_hosp_cat_14_to_18 = ifelse(distance_airport_to_transp_hosp_cat == "14 to 18", 1, 0),
+         distance_airport_to_transp_hosp_cat_18_to_20 = ifelse(distance_airport_to_transp_hosp_cat == "18 to 20", 1, 0),
+         distance_airport_to_transp_hosp_cat_20_to_60 = ifelse(distance_airport_to_transp_hosp_cat == "20 to 60", 1, 0),
+         
+         is_round_cat_Not_flying = ifelse(is_round_cat == "Not flying", 1, 0),
+         is_round_cat_Yes = ifelse(is_round_cat == "Yes", 1, 0),
+         is_round_cat_No = ifelse(is_round_cat == "No", 1, 0),
+         
+         origin_num_dest_airports_cat_Zero = ifelse(origin_num_dest_airports_cat == "Zero", 1, 0),
+         origin_num_dest_airports_cat_1_to_2 = ifelse(origin_num_dest_airports_cat == "1 to 2", 1, 0),
+         origin_num_dest_airports_cat_3_to_4 = ifelse(origin_num_dest_airports_cat == "3 to 4", 1, 0),
+         origin_num_dest_airports_cat_5 = ifelse(origin_num_dest_airports_cat == "5", 1, 0),
+         origin_num_dest_airports_cat_6_to_7 = ifelse(origin_num_dest_airports_cat == "6 to 7", 1, 0),
+         origin_num_dest_airports_cat_8 = ifelse(origin_num_dest_airports_cat == "8", 1, 0),
+         origin_num_dest_airports_cat_9_to_11 = ifelse(origin_num_dest_airports_cat == "9 to 11", 1, 0),
+         origin_num_dest_airports_cat_12 = ifelse(origin_num_dest_airports_cat == "12", 1, 0),
+         origin_num_dest_airports_cat_13_to_14 = ifelse(origin_num_dest_airports_cat == "13 to 14", 1, 0),
+         origin_num_dest_airports_cat_15_to_17 = ifelse(origin_num_dest_airports_cat == "15 to 17", 1, 0),
+         origin_num_dest_airports_cat_18 = ifelse(origin_num_dest_airports_cat == "18", 1, 0),
+         origin_num_dest_airports_cat_19_to_20 = ifelse(origin_num_dest_airports_cat == "19 to 20", 1, 0),
+         origin_num_dest_airports_cat_21_to_24 = ifelse(origin_num_dest_airports_cat == "21 to 24", 1, 0),
+         origin_num_dest_airports_cat_25_to_26 = ifelse(origin_num_dest_airports_cat == "25 to 26", 1, 0),
+         origin_num_dest_airports_cat_27_to_30 = ifelse(origin_num_dest_airports_cat == "27 to 30", 1, 0),
+         origin_num_dest_airports_cat_31_to_34 = ifelse(origin_num_dest_airports_cat == "31 to 34", 1, 0),
+         origin_num_dest_airports_cat_35_to_40 = ifelse(origin_num_dest_airports_cat == "35 to 40", 1, 0),
+         origin_num_dest_airports_cat_41_to_50 = ifelse(origin_num_dest_airports_cat == "41 to 50", 1, 0),
+         origin_num_dest_airports_cat_51_to_60 = ifelse(origin_num_dest_airports_cat == "51 to 60", 1, 0),
+         origin_num_dest_airports_cat_61_to_70 = ifelse(origin_num_dest_airports_cat == "61_to_70", 1, 0),
+         origin_num_dest_airports_cat_71_to_80 = ifelse(origin_num_dest_airports_cat == "71 to 80", 1, 0),
+         origin_num_dest_airports_cat_81_to_90 = ifelse(origin_num_dest_airports_cat == "81 to 90", 1, 0),
+         origin_num_dest_airports_cat_91_to_110 = ifelse(origin_num_dest_airports_cat == "91 to 110", 1, 0),
+         origin_num_dest_airports_cat_111_to_135 = ifelse(origin_num_dest_airports_cat == "111 to 135", 1, 0),
+         origin_num_dest_airports_cat_136_to_180 = ifelse(origin_num_dest_airports_cat == "136_to_180", 1, 0)
+         
+
+                )
+
+### Create bins using the cut function for distance_donor_to_transp column
+
+clean_offer_accep_data_feat_model_accepted <- clean_offer_accep_data_feat_model %>% 
+  filter(offer_accept == 1)
+
+hist(clean_offer_accep_data_feat_model_accepted$distance_donor_to_transp)
+
+
+distance_donor_to_transp_vec <- clean_offer_accep_data_feat_model$distance_donor_to_transp
+
+breaks_seq <- c(seq(0, 10, by = 1), seq(11, 100, by = 5), seq(101, 200, by = 10), seq(201, 400, by = 25), seq(401, 1000, by = 100), 1000, 1250, 1500, 2000, 3000, 4000, 5200)
+
+
+distance_donor_to_transp_cut <- cut(distance_donor_to_transp_vec, breaks = breaks_seq, include.lowest = TRUE, right = TRUE)
+
+clean_offer_accep_data_feat_model$distance_donor_to_transp_cat <- distance_donor_to_transp_cut
+
+clean_offer_accep_data_feat_model <- clean_offer_accep_data_feat_model %>% 
+  mutate(
+    
+    distance_donor_to_transp_cat_0_to_1 = ifelse(distance_donor_to_transp_cat == "[0,1]", TRUE, FALSE),
+         distance_donor_to_transp_cat_1_to_2 = ifelse(distance_donor_to_transp_cat == "(1,2]", TRUE, FALSE),
+         distance_donor_to_transp_cat_2_to_3 = ifelse(distance_donor_to_transp_cat == "(2,3]", TRUE, FALSE),
+         distance_donor_to_transp_cat_3_to_4 = ifelse(distance_donor_to_transp_cat == "(3,4]", TRUE, FALSE),
+         distance_donor_to_transp_cat_4_to_5 = ifelse(distance_donor_to_transp_cat == "(4,5]", TRUE, FALSE),
+         distance_donor_to_transp_cat_5_to_6 = ifelse(distance_donor_to_transp_cat == "(5,6]", TRUE, FALSE),
+         distance_donor_to_transp_cat_6_to_7 = ifelse(distance_donor_to_transp_cat == "(6,7]", TRUE, FALSE),
+         distance_donor_to_transp_cat_7_to_8 = ifelse(distance_donor_to_transp_cat == "(7,8]", TRUE, FALSE),
+         distance_donor_to_transp_cat_8_to_9 = ifelse(distance_donor_to_transp_cat == "(8,9]", TRUE, FALSE),
+         distance_donor_to_transp_cat_9_to_10 = ifelse(distance_donor_to_transp_cat == "(9,10]", TRUE, FALSE),
+         distance_donor_to_transp_cat_10_to_11 = ifelse(distance_donor_to_transp_cat == "(10,11]", TRUE, FALSE),
+         distance_donor_to_transp_cat_11_to_16 = ifelse(distance_donor_to_transp_cat == "(11,16]", TRUE, FALSE),
+         distance_donor_to_transp_cat_16_to_21 = ifelse(distance_donor_to_transp_cat == "(16,21]", TRUE, FALSE),
+         distance_donor_to_transp_cat_21_to_26 = ifelse(distance_donor_to_transp_cat == "(21,26]", TRUE, FALSE),
+         distance_donor_to_transp_cat_26_to_31 = ifelse(distance_donor_to_transp_cat == "(26,31]", TRUE, FALSE),
+         distance_donor_to_transp_cat_31_to_36 = ifelse(distance_donor_to_transp_cat == "(31,36]", TRUE, FALSE),
+         distance_donor_to_transp_cat_36_to_41 = ifelse(distance_donor_to_transp_cat == "(36,41]", TRUE, FALSE),
+         distance_donor_to_transp_cat_41_to_46 = ifelse(distance_donor_to_transp_cat == "(41,46]", TRUE, FALSE),
+         distance_donor_to_transp_cat_46_to_51 = ifelse(distance_donor_to_transp_cat == "(46,51]", TRUE, FALSE),
+         distance_donor_to_transp_cat_51_to_56 = ifelse(distance_donor_to_transp_cat == "(51,56]", TRUE, FALSE),
+         distance_donor_to_transp_cat_56_to_61 = ifelse(distance_donor_to_transp_cat == "(56,61]", TRUE, FALSE),
+         distance_donor_to_transp_cat_61_to_66 = ifelse(distance_donor_to_transp_cat == "(61,66]", TRUE, FALSE),
+         distance_donor_to_transp_cat_66_to_71 = ifelse(distance_donor_to_transp_cat == "(66,71]", TRUE, FALSE),
+         distance_donor_to_transp_cat_71_to_76 = ifelse(distance_donor_to_transp_cat == "(71,76]", TRUE, FALSE),
+         distance_donor_to_transp_cat_76_to_81 = ifelse(distance_donor_to_transp_cat == "(76,81]", TRUE, FALSE),
+         distance_donor_to_transp_cat_81_to_86 = ifelse(distance_donor_to_transp_cat == "(81,86]", TRUE, FALSE),
+         distance_donor_to_transp_cat_86_to_91 = ifelse(distance_donor_to_transp_cat == "(86,91]", TRUE, FALSE),
+         distance_donor_to_transp_cat_91_to_96 = ifelse(distance_donor_to_transp_cat == "(91,96]", TRUE, FALSE),
+         distance_donor_to_transp_cat_96_to_101 = ifelse(distance_donor_to_transp_cat == "(96,101]", TRUE, FALSE),
+         distance_donor_to_transp_cat_101_to_111 = ifelse(distance_donor_to_transp_cat == "(101,111]", TRUE, FALSE),
+         distance_donor_to_transp_cat_111_to_121 = ifelse(distance_donor_to_transp_cat == "(111,121]", TRUE, FALSE),
+         distance_donor_to_transp_cat_121_to_131 = ifelse(distance_donor_to_transp_cat == "(121,131]", TRUE, FALSE),
+         distance_donor_to_transp_cat_131_to_141 = ifelse(distance_donor_to_transp_cat == "(131,141]", TRUE, FALSE),
+         distance_donor_to_transp_cat_141_to_151 = ifelse(distance_donor_to_transp_cat == "(141,151]", TRUE, FALSE),
+         distance_donor_to_transp_cat_151_to_161 = ifelse(distance_donor_to_transp_cat == "(151,161]", TRUE, FALSE),
+         distance_donor_to_transp_cat_161_to_171 = ifelse(distance_donor_to_transp_cat == "(161,171]", TRUE, FALSE),
+         distance_donor_to_transp_cat_171_to_181 = ifelse(distance_donor_to_transp_cat == "(171,181]", TRUE, FALSE),
+         distance_donor_to_transp_cat_181_to_191 = ifelse(distance_donor_to_transp_cat == "(181,191]", TRUE, FALSE),
+         distance_donor_to_transp_cat_191_to_201 = ifelse(distance_donor_to_transp_cat == "(191,201]", TRUE, FALSE),
+         distance_donor_to_transp_cat_201_to_226 = ifelse(distance_donor_to_transp_cat == "(201,226]", TRUE, FALSE),
+         distance_donor_to_transp_cat_226_to_251 = ifelse(distance_donor_to_transp_cat == "(226,251]", TRUE, FALSE),
+         distance_donor_to_transp_cat_251_to_276 = ifelse(distance_donor_to_transp_cat == "(251,276]", TRUE, FALSE),
+         distance_donor_to_transp_cat_276_to_301 = ifelse(distance_donor_to_transp_cat == "(276,301]", TRUE, FALSE),
+         distance_donor_to_transp_cat_301_to_326 = ifelse(distance_donor_to_transp_cat == "(301,326]", TRUE, FALSE),
+         distance_donor_to_transp_cat_326_to_351 = ifelse(distance_donor_to_transp_cat == "(326,351]", TRUE, FALSE),
+         distance_donor_to_transp_cat_351_to_376 = ifelse(distance_donor_to_transp_cat == "(351,376]", TRUE, FALSE),
+         distance_donor_to_transp_cat_376_to_401 = ifelse(distance_donor_to_transp_cat == "(376,401]", TRUE, FALSE),
+         distance_donor_to_transp_cat_401_to_501 = ifelse(distance_donor_to_transp_cat == "(401,501]", TRUE, FALSE),
+         distance_donor_to_transp_cat_501_to_601 = ifelse(distance_donor_to_transp_cat == "(501,601]", TRUE, FALSE),
+         distance_donor_to_transp_cat_601_to_701 = ifelse(distance_donor_to_transp_cat == "(601,701]", TRUE, FALSE),
+         distance_donor_to_transp_cat_701_to_801 = ifelse(distance_donor_to_transp_cat == "(701,801]", TRUE, FALSE),
+         distance_donor_to_transp_cat_801_to_901 = ifelse(distance_donor_to_transp_cat == "(801,901]", TRUE, FALSE),
+         distance_donor_to_transp_cat_901_to_1000 = ifelse(distance_donor_to_transp_cat == "(901,1e+03]", TRUE, FALSE),
+         distance_donor_to_transp_cat_1000_to_1250 = ifelse(distance_donor_to_transp_cat == "(1e+03,1.25e+03]", TRUE, FALSE),
+         distance_donor_to_transp_cat_1250_to_1500 = ifelse(distance_donor_to_transp_cat == "(1.25e+03,1.5e+03]", TRUE, FALSE),
+         distance_donor_to_transp_cat_1500_to_2000 = ifelse(distance_donor_to_transp_cat == "(1.5e+03,2e+03]", TRUE, FALSE),
+         distance_donor_to_transp_cat_2000_to_3000 = ifelse(distance_donor_to_transp_cat == "(2e+03,3e+03]", TRUE, FALSE),
+         distance_donor_to_transp_cat_3000_to_4000 = ifelse(distance_donor_to_transp_cat == "(3e+03,4e+03]", TRUE, FALSE),
+         distance_donor_to_transp_cat_4000_to_5200 = ifelse(distance_donor_to_transp_cat == "(4e+03,5.2e+03]", TRUE, FALSE),
+         
+         ptr_sequence_num_cat = as.factor(ifelse(ptr_sequence_num == 1, "1",
+                                                 ifelse(ptr_sequence_num == 2, "2",
+                                                 ifelse(ptr_sequence_num >= 3 & ptr_sequence_num <= 5, "3 to 5",
+                                                 ifelse(ptr_sequence_num >= 6 & ptr_sequence_num <= 10, "6 to 10",
+                                                 ifelse(ptr_sequence_num >= 11 & ptr_sequence_num <= 20, "11 to 20",
+                                                 ifelse(ptr_sequence_num >= 21 & ptr_sequence_num <= 50, "21 to 50",
+                                                 ifelse(ptr_sequence_num >= 51 & ptr_sequence_num <= 100, "51 to 100",
+                                                 ifelse(ptr_sequence_num >= 101 & ptr_sequence_num <= 29206, "101 to 29206", NA))))))))),
+         
+         ptr_sequence_num_cat_1 = ifelse(ptr_sequence_num_cat == "1", TRUE, FALSE),         
+         ptr_sequence_num_cat_2 = ifelse(ptr_sequence_num_cat == "2", TRUE, FALSE),
+         ptr_sequence_num_cat_3_to_5 = ifelse(ptr_sequence_num_cat == "3 to 5", TRUE, FALSE),
+         ptr_sequence_num_cat_6_to_10 = ifelse(ptr_sequence_num_cat == "6 to 10", TRUE, FALSE),         
+         ptr_sequence_num_cat_11_to_20 = ifelse(ptr_sequence_num_cat == "11 to 20", TRUE, FALSE),
+         ptr_sequence_num_cat_21_to_50 = ifelse(ptr_sequence_num_cat == "21 to 50", TRUE, FALSE),
+         ptr_sequence_num_cat_51_to_100 = ifelse(ptr_sequence_num_cat == "51 to 100", TRUE, FALSE),
+         ptr_sequence_num_cat_101_to_29206 = ifelse(ptr_sequence_num_cat == "101 to 29206", TRUE, FALSE),
+    
+    
+    kdri_rao_cat = as.factor(ifelse(kdri_rao >= 0.60 & kdri_rao <= 1, "0.6 to 1",
+                                    ifelse(kdri_rao > 1 & kdri_rao <= 1.5, "1 to 1.5",
+                                           ifelse(kdri_rao > 1.5 & kdri_rao <= 2, "1.5 to 2",
+                                                  ifelse(kdri_rao > 2 & kdri_rao <= 3.75, "2 to 3.75", NA
+                                    ))))),
+    
+    kdri_rao_cat_0.6_to_1 = ifelse(kdri_rao_cat == "0.6 to 1", TRUE, FALSE),
+    kdri_rao_cat_1_to_1.5 = ifelse(kdri_rao_cat == "1 to 1.5", TRUE, FALSE),
+    kdri_rao_cat_1.5_to_2 = ifelse(kdri_rao_cat == "1.5 to 2", TRUE, FALSE),
+    kdri_rao_cat_2_to_3.75 = ifelse(kdri_rao_cat == "2 to 3.75", TRUE, FALSE),
+    
+    don_age_in_yrs = don_age_in_months / 12,
+    
+    don_age_in_yrs_cat = as.factor(ifelse(don_age_in_yrs >= 0 & don_age_in_yrs <= 20, "0 to 20",
+                                              ifelse(don_age_in_yrs > 20 & don_age_in_yrs <= 40, "20 to 40",
+                                                     ifelse(don_age_in_yrs > 40 & don_age_in_yrs <= 60, "40 to 60",
+                                                            ifelse(don_age_in_yrs > 60 & don_age_in_yrs <= 80, "60 to 80", NA
+                                                                   
+                                                                   ))))),
+    
+    don_age_in_yrs_cat_0_to_20 = ifelse(don_age_in_yrs_cat == "0 to 20", TRUE, FALSE),    
+    don_age_in_yrs_cat_20_to_40 = ifelse(don_age_in_yrs_cat == "20 to 40", TRUE, FALSE),
+    don_age_in_yrs_cat_40_to_60 = ifelse(don_age_in_yrs_cat == "40 to 60", TRUE, FALSE),
+    don_age_in_yrs_cat_60_to_80 = ifelse(don_age_in_yrs_cat == "60 to 80", TRUE, FALSE),
+
+    
+    can_age_at_listing_cat = as.factor(ifelse(can_age_at_listing >= 9 & can_age_at_listing <= 15, "9 to 15",
+                                              ifelse(can_age_at_listing >= 15 & can_age_at_listing <= 24, "15 to 24",
+                                                     ifelse(can_age_at_listing > 24 & can_age_at_listing <= 45, "24 to 45",
+                                                            ifelse(can_age_at_listing > 45 & can_age_at_listing <= 65, "45 to 65",
+                                                                   ifelse(can_age_at_listing > 65 & can_age_at_listing <= 87, "65 to 87", NA)))))),
+    
+    can_age_at_listing_cat_9_to_15 = ifelse(can_age_at_listing_cat == "9 to 15", TRUE, FALSE),
+    can_age_at_listing_cat_15_to_24 = ifelse(can_age_at_listing_cat == "15 to 24", TRUE, FALSE),    
+    can_age_at_listing_cat_24_to_45 = ifelse(can_age_at_listing_cat == "24 to 45", TRUE, FALSE),
+    can_age_at_listing_cat_45_to_65 = ifelse(can_age_at_listing_cat == "45 to 65", TRUE, FALSE),    
+    can_age_at_listing_cat_65_to_87 = ifelse(can_age_at_listing_cat == "65 to 87", TRUE, FALSE),
+    
+    cpra_cat = as.factor(ifelse(cpra >= 0 & cpra <= 0.2, "0 to 0.2",
+                                ifelse(cpra > 0.2 & cpra <= 0.4, "0.2 to 0.4",
+                                       ifelse(cpra > 0.4 & cpra <= 0.6, "0.4 to 0.6",
+                                              ifelse(cpra > 0.6 & cpra <= 0.8, "0.6 to 0.8",
+                                                     ifelse(cpra > 0.8 & cpra <= 1, "0.8 to 1", NA)
+                                                     ))))),
+    
+    cpra_cat_0_to_0.2 = ifelse(cpra_cat == "0 to 0.2", TRUE, FALSE),
+    cpra_cat_0.2_to_0.4 = ifelse(cpra_cat == "0.2 to 0.4", TRUE, FALSE),
+    cpra_cat_0.4_to_0.6 = ifelse(cpra_cat == "0.4 to 0.6", TRUE, FALSE),
+    cpra_cat_0.6_to_0.8 = ifelse(cpra_cat == "0.6 to 0.8", TRUE, FALSE),
+    cpra_cat_0.8_to_1 = ifelse(cpra_cat == "0.8 to 1", TRUE, FALSE),
+    
+    
+     epts_cat = as.factor(ifelse(EPTS_pct >= 0 & EPTS_pct <= 0.2, "0 to 0.2",
+                                ifelse(EPTS_pct > 0.2 & EPTS_pct <= 0.4, "0.2 to 0.4",
+                                       ifelse(EPTS_pct > 0.4 & EPTS_pct <= 0.6, "0.4 to 0.6",
+                                              ifelse(EPTS_pct > 0.6 & EPTS_pct <= 0.8, "0.6 to 0.8",
+                                                     ifelse(EPTS_pct > 0.8 & EPTS_pct <= 1, "0.8 to 1", NA)
+                                                     ))))),
+    
+    epts_cat_0_to_0.2 = ifelse(epts_cat == "0 to 0.2", TRUE, FALSE),
+    epts_cat_0.2_to_0.4 = ifelse(epts_cat == "0.2 to 0.4", TRUE, FALSE),
+    epts_cat_0.4_to_0.6 = ifelse(epts_cat == "0.4 to 0.6", TRUE, FALSE),
+    epts_cat_0.6_to_0.8 = ifelse(epts_cat == "0.6 to 0.8", TRUE, FALSE),
+    epts_cat_0.8_to_1 = ifelse(epts_cat == "0.8 to 1", TRUE, FALSE),
+    
+    
+    on_dialysis_Y = ifelse(on_dialysis == "Y", TRUE, FALSE),
+    on_dialysis_N = ifelse(on_dialysis == "N", TRUE, FALSE),
+    
+    
+    is_top_20_both_airports_cat = ifelse(is.na(is_top_20_both_airports), "Not flying",
+                                         ifelse(is_top_20_both_airports, "Yes", "No")),
+    
+    is_top_20_both_airports_cat_Not_flying = ifelse(is_top_20_both_airports_cat == "Not flying", TRUE, FALSE),
+    is_top_20_both_airports_cat_Yes = ifelse(is_top_20_both_airports_cat == "Yes", TRUE, FALSE),
+    is_top_20_both_airports_cat_No = ifelse(is_top_20_both_airports_cat == "No", TRUE, FALSE))
+    
+
+hist(clean_offer_accep_data_feat_model_accepted$origin_airport_num_dep)
+
+origin_airport_num_dep_vec <- clean_offer_accep_data_feat_model$origin_airport_num_dep
+    
+breaks_seq_num_dep <- c(0, seq(1, 2000, by = 100), seq(2001, 5000, by = 500), seq(5001, 10000, by = 1000), 10000, 15000, 20000, 27000)
+    
+    
+origin_airport_num_dep_cut <- cut(origin_airport_num_dep_vec, breaks = breaks_seq_num_dep, include.lowest = TRUE, right = FALSE)
+    
+clean_offer_accep_data_feat_model$origin_airport_num_dep_cat <- origin_airport_num_dep_cut
+
+clean_offer_accep_data_feat_model <- clean_offer_accep_data_feat_model %>% 
+  mutate(origin_airport_num_dep_cat_0_to_1 = ifelse(origin_airport_num_dep_cat == "[0,1)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1_to_101 = ifelse(origin_airport_num_dep_cat == "[1,101)", TRUE, FALSE),
+         origin_airport_num_dep_cat_101_to_201 = ifelse(origin_airport_num_dep_cat == "[101, 201)", TRUE, FALSE),
+         origin_airport_num_dep_cat_201_to_301 = ifelse(origin_airport_num_dep_cat == "[201, 301)", TRUE, FALSE),
+         origin_airport_num_dep_cat_301_to_401 = ifelse(origin_airport_num_dep_cat == "[301, 401)", TRUE, FALSE),
+         origin_airport_num_dep_cat_401_to_501 = ifelse(origin_airport_num_dep_cat == "[401, 501)", TRUE, FALSE),
+         origin_airport_num_dep_cat_501_to_601 = ifelse(origin_airport_num_dep_cat == "[501, 601)", TRUE, FALSE),
+         origin_airport_num_dep_cat_601_to_701 = ifelse(origin_airport_num_dep_cat == "[601, 701)", TRUE, FALSE),
+         origin_airport_num_dep_cat_701_to_801 = ifelse(origin_airport_num_dep_cat == "[701, 801)", TRUE, FALSE),
+         origin_airport_num_dep_cat_801_to_901 = ifelse(origin_airport_num_dep_cat == "[801, 901)", TRUE, FALSE),
+         origin_airport_num_dep_cat_901_to_1000 = ifelse(origin_airport_num_dep_cat == "[901,1e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1000_to_1100 = ifelse(origin_airport_num_dep_cat == "[1e+03,1.1e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1100_to_1200 = ifelse(origin_airport_num_dep_cat == "[1.1e+03,1.2e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1200_to_1300 = ifelse(origin_airport_num_dep_cat == "[1.2e+03,1.3e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1300_to_1400 = ifelse(origin_airport_num_dep_cat == "[1.3e+03,1.4e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1400_to_1500 = ifelse(origin_airport_num_dep_cat == "[1.4e+03,1.5e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1500_to_1600 = ifelse(origin_airport_num_dep_cat == "[1.5e+03,1.6e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1600_to_1700 = ifelse(origin_airport_num_dep_cat == "[1.6e+03,1.7e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1700_to_1800 = ifelse(origin_airport_num_dep_cat == "[1.7e+03,1.8e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1800_to_1900 = ifelse(origin_airport_num_dep_cat == "[1.8e+03,1.9e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_1900_to_2000 = ifelse(origin_airport_num_dep_cat == "[1.9e+03,2e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_2000_to_2500 = ifelse(origin_airport_num_dep_cat == "[2e+03,2.5e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_2500_to_3000 = ifelse(origin_airport_num_dep_cat == "[2.5e+03,3e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_3000_to_3500 = ifelse(origin_airport_num_dep_cat == "[3e+03,3.5e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_3500_to_4000 = ifelse(origin_airport_num_dep_cat == "[3.5e+03,4e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_4000_to_4500 = ifelse(origin_airport_num_dep_cat == "[4e+03,4.5e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_4500_to_5000 = ifelse(origin_airport_num_dep_cat == "[4.5e+03,5e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_5000_to_6000 = ifelse(origin_airport_num_dep_cat == "[5e+03,6e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_6000_to_7000 = ifelse(origin_airport_num_dep_cat == "[6e+03,7e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_7000_to_8000 = ifelse(origin_airport_num_dep_cat == "[7e+03,8e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_8000_to_9000 = ifelse(origin_airport_num_dep_cat == "[8e+03,9e+03)", TRUE, FALSE),
+         origin_airport_num_dep_cat_9000_to_10000 = ifelse(origin_airport_num_dep_cat == "[9e+03,1e+04)", TRUE, FALSE),
+         origin_airport_num_dep_cat_10000_to_15000 = ifelse(origin_airport_num_dep_cat == "[1e+04, 1.5e+04)", TRUE, FALSE),
+         origin_airport_num_dep_cat_15000_to_20000 = ifelse(origin_airport_num_dep_cat == "[1.5e+04,2e+04)", TRUE, FALSE),
+         origin_airport_num_dep_cat_20000_to_27000 = ifelse(origin_airport_num_dep_cat == "[2e+04,2.7e+04]", TRUE, FALSE)
+         
+         )
+
+
+
+clean_offer_accep_data_feat_model <- clean_offer_accep_data_feat_model %>%
+  mutate(
+    latest_dep_time_cat = as.factor(ifelse(!(is_flying), "Not flying",
+                                                ifelse(!(is_direct) & is_flying, "Not direct",
+                                                       ifelse(latest_dep_time == 2400, "12:00 AM",
+                                                              ifelse(latest_dep_time >= 0001 & latest_dep_time <= 1759, "12:01 AM to 5:59 PM",
+                                                                            ifelse(latest_dep_time >= 1800 & latest_dep_time <= 1959, "6 PM to 7:59 PM",
+                                                                     ifelse(latest_dep_time >= 2000 & latest_dep_time <= 2059, "8 PM to 8:59 PM",
+                                                                            ifelse(latest_dep_time >= 2100 & latest_dep_time <= 2159, "9 PM to 9:59 PM",
+                                                                                   ifelse(latest_dep_time >= 2200 & latest_dep_time <= 2259, "10 PM to 10:59 PM",
+                                                                                          ifelse(latest_dep_time >= 2300 & latest_dep_time <= 2400, "11 PM to 11:59 PM", NA)))))))))),
+         
+         latest_dep_time_cat_Not_flying = ifelse(latest_dep_time_cat == "Not flying", TRUE, FALSE),
+         latest_dep_time_cat_Not_direct = ifelse(latest_dep_time_cat == "Not direct", TRUE, FALSE),
+         latest_dep_time_cat_00 = ifelse(latest_dep_time_cat == "12 AM", TRUE, FALSE),
+         latest_dep_time_cat_00_01_to_17_59 = ifelse(latest_dep_time_cat == "12:01 AM to 5:59 PM", TRUE, FALSE),
+         latest_dep_time_cat_18_to_19_59= ifelse(latest_dep_time_cat == "6 PM to 7:59 PM", TRUE, FALSE),
+         latest_dep_time_cat_20_to_20_59 = ifelse(latest_dep_time_cat == "8 PM to 8:59 PM", TRUE, FALSE),
+         latest_dep_time_cat_21_to_21_59 = ifelse(latest_dep_time_cat == "9 PM to 9:59 PM", TRUE, FALSE),
+         latest_dep_time_cat_22_to_22_59 = ifelse(latest_dep_time_cat == "10 PM to 10:59 PM", TRUE, FALSE),
+         latest_dep_time_cat_23_to_23_59 = ifelse(latest_dep_time_cat == "11 PM to 11:59 PM", TRUE, FALSE)
+
+
+         )
+
+clean_offer_accep_data_feat_model <- clean_offer_accep_data_feat_model %>% 
+  mutate(avg_elapsed_time_hrs = avg_elapsed_time_mins / 60) %>% 
+  
+  mutate(avg_elapsed_time_hrs_cat = ifelse(!(is_flying), "Not flying",
+                                           ifelse(is_flying & !(is_direct), "Not direct",
+                                                  ifelse(avg_elapsed_time_hrs < 1, "Less than 1 hr",
+                                                         ifelse(avg_elapsed_time_hrs >= 1 & avg_elapsed_time_hrs < 2, "1 to 2 hrs",
+                                                                ifelse(avg_elapsed_time_hrs >= 2 & avg_elapsed_time_hrs < 3, "2 to 3 hrs",
+                                                                       ifelse(avg_elapsed_time_hrs >= 3 & avg_elapsed_time_hrs < 5, " 3 to 5 hrs",
+                                                                              ifelse(avg_elapsed_time_hrs >= 5 & avg_elapsed_time_hrs < 10, "5 to 10 hrs",
+                                                                                      NA))))))),
+         
+         avg_elapsed_time_hrs_cat_Not_flying = ifelse(avg_elapsed_time_hrs_cat == "Not flying", TRUE, FALSE),
+         avg_elapsed_time_hrs_cat_Not_direct = ifelse(avg_elapsed_time_hrs_cat == "Not direct", TRUE, FALSE),
+         avg_elapsed_time_hrs_cat_1 = ifelse(avg_elapsed_time_hrs_cat == "Less than 1 hr", TRUE, FALSE),
+         avg_elapsed_time_hrs_cat_1_to_2 = ifelse(avg_elapsed_time_hrs_cat == "1 to 2 hrs", TRUE, FALSE),
+         avg_elapsed_time_hrs_cat_2_to_3 = ifelse(avg_elapsed_time_hrs_cat == "2 to 3 hrs", TRUE, FALSE),
+         avg_elapsed_time_hrs_cat_3_to_5 = ifelse(avg_elapsed_time_hrs_cat == "3 to 5 hrs", TRUE, FALSE),
+         avg_elapsed_time_hrs_cat_5_to_10 = ifelse(avg_elapsed_time_hrs_cat == "5 to 10 hrs", TRUE, FALSE)
+         
+         )
+
+
+
+
+  
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(latest_dep_time_cat) %>% 
+  summarize(count = sum(offer_accept == 1)) %>% 
+  print(n = Inf)
+
+clean_offer_accep_data_feat_model_na <- clean_offer_accep_data_feat_model %>% 
+  filter(is.na(latest_dep_time_cat))
+
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(origin_airport_num_dep_cat) %>% 
+  summarize(count = sum(offer_accept == 1)) %>% 
+  print(n = Inf)
+
+           
+clean_offer_accep_data_feat_model %>% 
+  group_by(distance_donor_to_transp_cat) %>% 
+  summarize(count = sum(offer_accept == 1)) %>% 
+  print(n = Inf)
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(freq_daily_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(num_layover_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(distance_donor_hosp_to_airport_cat) %>% 
+  summarize(count = sum(offer_accept == 1)) %>% 
+  print(n = Inf)
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(num_days_week_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(distance_airport_to_transp_hosp_cat) %>% 
+  summarize(count = sum(offer_accept == 1)) %>% 
+  print(n = Inf)
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(is_round_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(ptr_sequence_num_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(kdri_rao_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(don_age_in_yrs_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(can_age_at_listing_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(cpra_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(epts_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(on_dialysis) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+clean_offer_accep_data_feat_model %>% 
+  group_by(avg_elapsed_time_hrs_cat) %>% 
+  summarize(count = sum(offer_accept == 1))
+
+  
+
+
+```
+
+
+```{r}
+
+# Preparing the response variables through indicator variables for matrices
+
+all_predictors_matrix <- matrix(nrow = 0, ncol = 0)
+
+
+all_predictors_matrix <- clean_offer_accep_data_feat_model$dist_categ_too_close
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$dist_categ_direct, clean_offer_accep_data_feat_model$dist_categ_multiple)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$num_layover_cat_Zero, clean_offer_accep_data_feat_model$num_layover_cat_One, clean_offer_accep_data_feat_model$num_layover_cat_Two_Three)
+
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$freq_daily_cat_Zero, clean_offer_accep_data_feat_model$freq_daily_cat_One, clean_offer_accep_data_feat_model$freq_daily_cat_Two, clean_offer_accep_data_feat_model$freq_daily_cat_Three, clean_offer_accep_data_feat_model$freq_daily_cat_Four, clean_offer_accep_data_feat_model$freq_daily_cat_5_to_6, clean_offer_accep_data_feat_model$freq_daily_cat_7_to_8, clean_offer_accep_data_feat_model$freq_daily_cat_9_to_10, clean_offer_accep_data_feat_model$freq_daily_cat_11_to_12, clean_offer_accep_data_feat_model$freq_daily_cat_13_to_15, clean_offer_accep_data_feat_model$freq_daily_cat_16_to_32)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$is_top_20_origin_categ_Not_flying, clean_offer_accep_data_feat_model$is_top_20_origin_categ_Yes, clean_offer_accep_data_feat_model$is_top_20_origin_categ_No, clean_offer_accep_data_feat_model$is_top_20_dest_categ_Not_flying, clean_offer_accep_data_feat_model$is_top_20_dest_categ_Yes, clean_offer_accep_data_feat_model$is_top_20_dest_categ_No)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_Zero, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_0_to_0.5, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_0.5_to_1, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_1_to_2, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_2_to_3, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_3_to_3.5, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_3.5_to_4, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_4_to_4.5, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_4.5_to_5, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_5_to_5.5, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_5.5_to_6, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_6_to_6.5, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_6.5_to_7, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_7_to_8, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_8_to_9, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_9_to_10, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_10_to_11, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_11_to_12, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_12_to_14, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_14_to_16, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_16_to_20, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_16_to_20, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_20_to_30, clean_offer_accep_data_feat_model$distance_donor_hosp_to_airport_cat_30_to_40)
+
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_Zero, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_0_to_0.5, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_0.5_to_1, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_1_to_2, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_2_to_3, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_3_to_4, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_4_to_4.5, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_4.5_to_5, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_5_to_5.5, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_5.5_to_6, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_6_to_6.5, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_6.5_to_7, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_7_to_7.5, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_7.5_to_8, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_8_to_8.5, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_8.5_to_9, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_9_to_10, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_10_to_11, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_11_to_12, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_12_to_14, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_14_to_18, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_18_to_20, clean_offer_accep_data_feat_model$distance_airport_to_transp_hosp_cat_20_to_60)
+
+all_predictors_matrix <- cbind(all_predictors_matrix,
+                               
+                               clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_Zero,
+                           clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_1_to_2,
+                           clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_3_to_4,
+                           clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_5,
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_6_to_7,
+                           clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_8, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_9_to_11, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_12, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_13_to_14, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_15_to_17, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_18, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_19_to_20, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_21_to_24, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_25_to_26, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_27_to_30, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_31_to_34, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_35_to_40, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_41_to_50, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_51_to_60, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_61_to_70, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_71_to_80, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_81_to_90, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_91_to_110, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_111_to_135, 
+                     clean_offer_accep_data_feat_model$origin_num_dest_airports_cat_136_to_180)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$is_round_cat_Not_flying, clean_offer_accep_data_feat_model$is_round_cat_Yes, clean_offer_accep_data_feat_model$is_round_cat_No)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_0_to_1, clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_1_to_2,
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_2_to_3, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_3_to_4, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_4_to_5, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_5_to_6, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_6_to_7, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_7_to_8, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_8_to_9, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_9_to_10, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_10_to_11, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_11_to_16, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_16_to_21, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_21_to_26, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_26_to_31, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_31_to_36, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_36_to_41, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_41_to_46, 
+                               
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_46_to_51, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_51_to_56, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_56_to_61, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_61_to_66, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_66_to_71, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_71_to_76, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_76_to_81, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_81_to_86, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_86_to_91, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_91_to_96, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_96_to_101, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_101_to_111, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_111_to_121, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_121_to_131, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_131_to_141, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_141_to_151, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_151_to_161, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_161_to_171, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_171_to_181, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_181_to_191, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_191_to_201, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_201_to_226, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_226_to_251, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_251_to_276, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_276_to_301, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_301_to_326, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_326_to_351, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_351_to_376, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_376_to_401, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_401_to_501, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_501_to_601, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_601_to_701, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_701_to_801, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_801_to_901, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_901_to_1000, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_1000_to_1250, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_1250_to_1500, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_1500_to_2000, 
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_2000_to_3000,
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_3000_to_4000,
+                               clean_offer_accep_data_feat_model$distance_donor_to_transp_cat_4000_to_5200
+                               
+                               )
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$ptr_sequence_num_cat_1,
+                               clean_offer_accep_data_feat_model$ptr_sequence_num_cat_2,
+                               clean_offer_accep_data_feat_model$ptr_sequence_num_cat_3_to_5,
+                               clean_offer_accep_data_feat_model$ptr_sequence_num_cat_6_to_10,
+                               clean_offer_accep_data_feat_model$ptr_sequence_num_cat_11_to_20,
+                               clean_offer_accep_data_feat_model$ptr_sequence_num_cat_21_to_50,
+                               clean_offer_accep_data_feat_model$ptr_sequence_num_cat_51_to_100,
+                               clean_offer_accep_data_feat_model$ptr_sequence_num_cat_101_to_29206)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$kdri_rao_cat_0.6_to_1,
+                               clean_offer_accep_data_feat_model$kdri_rao_cat_1_to_1.5, clean_offer_accep_data_feat_model$kdri_rao_cat_1.5_to_2,
+                               clean_offer_accep_data_feat_model$kdri_rao_cat_2_to_3.75)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$don_age_in_yrs_cat_0_to_20,
+                               clean_offer_accep_data_feat_model$don_age_in_yrs_cat_20_to_40,
+                               clean_offer_accep_data_feat_model$don_age_in_yrs_cat_40_to_60,
+                               clean_offer_accep_data_feat_model$don_age_in_yrs_cat_60_to_80)
+
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$can_age_at_listing_cat_9_to_15,
+                               clean_offer_accep_data_feat_model$can_age_at_listing_cat_15_to_24, 
+                               clean_offer_accep_data_feat_model$can_age_at_listing_cat_24_to_45, 
+                               clean_offer_accep_data_feat_model$can_age_at_listing_cat_45_to_65, 
+                               clean_offer_accep_data_feat_model$can_age_at_listing_cat_65_to_87)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$cpra_cat_0_to_0.2, 
+                               clean_offer_accep_data_feat_model$cpra_cat_0.2_to_0.4, clean_offer_accep_data_feat_model$cpra_cat_0.4_to_0.6, 
+                               clean_offer_accep_data_feat_model$cpra_cat_0.6_to_0.8, clean_offer_accep_data_feat_model$cpra_cat_0.8_to_1)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$epts_cat_0_to_0.2, 
+                               clean_offer_accep_data_feat_model$epts_cat_0.2_to_0.4, clean_offer_accep_data_feat_model$epts_cat_0.4_to_0.6, 
+                               clean_offer_accep_data_feat_model$epts_cat_0.6_to_0.8, clean_offer_accep_data_feat_model$epts_cat_0.8_to_1)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$on_dialysis_Y, 
+                               clean_offer_accep_data_feat_model$on_dialysis_N)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, 
+                  clean_offer_accep_data_feat_model$is_top_20_both_airports_cat_Not_flying,
+                  clean_offer_accep_data_feat_model$is_top_20_both_airports_cat_Yes, 
+                  clean_offer_accep_data_feat_model$is_top_20_both_airports_cat_No)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_0_to_1, 
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1_to_101,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_101_to_201,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_201_to_301,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_301_to_401,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_401_to_501,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_501_to_601,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_601_to_701,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_701_to_801,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_801_to_901,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_901_to_1000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1000_to_1100,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1100_to_1200,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1200_to_1300,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1300_to_1400,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1400_to_1500,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1500_to_1600,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1600_to_1700,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1700_to_1800,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1800_to_1900,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_1900_to_2000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_2000_to_2500,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_2500_to_3000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_3000_to_3500,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_3500_to_4000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_4000_to_4500,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_4500_to_5000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_5000_to_6000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_6000_to_7000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_7000_to_8000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_8000_to_9000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_9000_to_10000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_10000_to_15000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_15000_to_20000,
+                               clean_offer_accep_data_feat_model$origin_airport_num_dep_cat_20000_to_27000)
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$latest_dep_time_cat_Not_flying,
+                               clean_offer_accep_data_feat_model$latest_dep_time_cat_Not_direct,
+                               clean_offer_accep_data_feat_model$latest_dep_time_cat_00,
+                               clean_offer_accep_data_feat_model$latest_dep_time_cat_00_01_to_17_59,
+                               clean_offer_accep_data_feat_model$latest_dep_time_cat_18_to_19_59,
+                               clean_offer_accep_data_feat_model$latest_dep_time_cat_20_to_20_59,
+                               clean_offer_accep_data_feat_model$latest_dep_time_cat_21_to_21_59,
+                               clean_offer_accep_data_feat_model$latest_dep_time_cat_22_to_22_59,
+                               clean_offer_accep_data_feat_model$latest_dep_time_cat_23_to_23_59
+                               
+                               )
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$avg_elapsed_time_hrs_cat_Not_flying,
+                               clean_offer_accep_data_feat_model$avg_elapsed_time_hrs_cat_Not_direct,
+                               clean_offer_accep_data_feat_model$avg_elapsed_time_hrs_cat_1,
+                               clean_offer_accep_data_feat_model$avg_elapsed_time_hrs_cat_1_to_2,
+                               clean_offer_accep_data_feat_model$avg_elapsed_time_hrs_cat_2_to_3,
+                               clean_offer_accep_data_feat_model$avg_elapsed_time_hrs_cat_3_to_5,
+                               clean_offer_accep_data_feat_model$avg_elapsed_time_hrs_cat_5_to_10)
+
+
+all_predictors_matrix <- cbind(all_predictors_matrix, clean_offer_accep_data_feat_model$num_days_week_cat_Zero, 
+                               clean_offer_accep_data_feat_model$num_days_week_cat_1_to_2, 
+                               clean_offer_accep_data_feat_model$num_days_week_cat_3_to_5,
+                               clean_offer_accep_data_feat_model$num_days_week_cat_6, 
+                               clean_offer_accep_data_feat_model$num_days_week_cat_7)
+
+
+ 
+
+                               
+
+```
+
+
+```{r}
+
+matrix_names <- c("Dist: Too close", "Dist: Direct", "Dist: Multiple", 
+                  
+                  "Num layovers: 0", "Num layovers: 1", "Num layovers: 2 or 3", 
+                  
+                  "Freq daily: 0", "Freq daily: 1", "Freq daily: 2", "Freq daily: 3", "Freq daily: 4", "Freq daily: 5 to 6", "Freq daily: 7 to 8", "Freq daily: 9 to 10", "Freq daily: 11 to 12", "Freq daily: 13 to 15", "Freq daily: 16 to 32", 
+                  
+                  "Is Top 20 Origin: Not flying", "Is Top 20 Origin: Yes", "Is Top 20 Origin: No", 
+                  "Is Top 20 Dest: Not flying", "Is Top 20 Dest: Yes", "Is Top 20 Dest: No", 
+                  
+                  "Distance DH to Aiport: Zero", "Distance DH to Aiport: 0 to 0.5", "Distance DH to Aiport: 0.5 to 1", "Distance DH to Aiport: 1 to 2", "Distance DH to Airport: 2 to 3", "Distance DH to Airport: 3 to 3.5", "Distance DH to Airport: 3.5 to 4", "Distance DH to Airport: 4 to 4.5", "Distance DH to Airport: 4.5 to 5", "Distance DH to Aiport: 5 to 5.5","Distance DH to Aiport: 5.5 to 6","Distance DH to Aiport: 6 to 6.5","Distance DH to Aiport: 6.5 to 7", "Distance DH to Aiport: 7 to 8", "Distance DH to Airport: 8 to 9", "Distance DH to Airport: 9 to 10", "Distance DH to Airport: 10 to 11", "Distance DH to Airport: 11 to 12", "Distance DH to Airport: 12 to 14", "Distance DH to Airport: 14 to 16", "Distance DH to Airport: 16 to 20", "Distance DH to Airport: 20 to 30", "Distance DH to Airport: 30 to 40", "Distance DH to Airport: 40 to 80", 
+                  
+                  "Distance Airport to TH: Zero", "Distance Airport to TH: 0 to 0.5", "Distance Airport to TH: 0.5 to 1", "Distance Airport to TH: 1 to 2", "Distance Airport to TH: 2 to 3", "Distance Airport to TH: 3 to 4", "Distance Airport to TH: 4 to 4.5", "Distance Airport to TH: 4.5 to 5", "Distance Airport to TH: 5 to 5.5", "Distance Airport to TH: 5.5 to 6", "Distance Airport to TH: 6 to 6.5", "Distance Airport to TH: 6.5 to 7", "Distance Airport to TH: 7 to 7.5", "Distance Airport to TH: 7.5 to 8", "Distance Airport to TH: 8 to 8.5", "Distance Airport to TH: 8.5 to 9", "Distance Airport to TH: 9 to 10", "Distance Airport to TH: 10 to 11", "Distance Airport to TH: 11 to 12", "Distance Airport to TH: 12 to 14", "Distance Airport to TH: 14 to 18", "Distance Airport to TH: 18 to 20", "Distance Airport to TH: 20 to 60",
+                  
+                  
+                  "Origin airport: Zero destination", "Origin airport: 1-2 destination", "Origin airport: 3-4 destination", "Origin airport: 5 destination", "Origin airport: 6-7 destination", "Origin airport: 8 destination", "Origin airport: 9-11 destination", "Origin airport: 12 destination", "Origin airport: 13-14 destination", "Origin airport: 15-17 destination", "Origin airport: 18 destination", "Origin airport: 19-20 destination", "Origin airport: 21-24 destination", "Origin airport: 25-26 destination", "Origin airport: 27-30 destination", "Origin airport: 31-34 destination", "Origin airport: 35-40 destination", "Origin airport: 41-50 destination", "Origin airport: 51-60 destination", "Origin airport: 61-70 destination", "Origin airport: 71-80 destination", "Origin airport: 81-90 destination", "Origin airport: 91-110 destination", "Origin airport: 111-135 destination", "Origin airport: 136-180 destination",
+                  
+                  "Is Round trip available: Not flying", "Is Round trip available: Yes", "Is Round trip available: No",
+
+                  
+                   "Distance Donor hosp to Transp hosp: 0-1",  "Distance Donor hosp to Transp hosp: 1-2",
+                    "Distance Donor hosp to Transp hosp: 2-3", "Distance Donor hosp to Transp hosp: 3-4",
+                    "Distance Donor hosp to Transp hosp: 4-5", "Distance Donor hosp to Transp hosp: 5-6",
+                    "Distance Donor hosp to Transp hosp: 6-7", "Distance Donor hosp to Transp hosp: 7-8",
+                    "Distance Donor hosp to Transp hosp: 8-9", "Distance Donor hosp to Transp hosp: 9-10",
+                    "Distance Donor hosp to Transp hosp: 10-11", "Distance Donor hosp to Transp hosp: 11-16",
+                    "Distance Donor hosp to Transp hosp: 16-21", "Distance Donor hosp to Transp hosp: 21-26",
+                    "Distance Donor hosp to Transp hosp: 26-31", "Distance Donor hosp to Transp hosp: 31-36",
+                    "Distance Donor hosp to Transp hosp: 36-41", "Distance Donor hosp to Transp hosp: 41-46",
+                  
+                    "Distance Donor hosp to Transp hosp: 46-51", "Distance Donor hosp to Transp hosp: 51-56",
+                   "Distance Donor hosp to Transp hosp: 56-61", "Distance Donor hosp to Transp hosp: 61-66",
+                   "Distance Donor hosp to Transp hosp: 66-71", "Distance Donor hosp to Transp hosp: 71-76",
+                   "Distance Donor hosp to Transp hosp: 76-81", "Distance Donor hosp to Transp hosp: 81-86",
+                   "Distance Donor hosp to Transp hosp: 86-91", "Distance Donor hosp to Transp hosp: 91-96",
+                   "Distance Donor hosp to Transp hosp: 96-101", "Distance Donor hosp to Transp hosp: 101-111",
+                   "Distance Donor hosp to Transp hosp: 111-121", "Distance Donor hosp to Transp hosp: 121-131",
+                   "Distance Donor hosp to Transp hosp: 131-141", "Distance Donor hosp to Transp hosp: 141-151",
+                   "Distance Donor hosp to Transp hosp: 151-161",  "Distance Donor hosp to Transp hosp: 161-171",
+                   "Distance Donor hosp to Transp hosp: 171-181",  "Distance Donor hosp to Transp hosp: 181-191",
+                   "Distance Donor hosp to Transp hosp: 191-201",  "Distance Donor hosp to Transp hosp: 201-226",
+                   "Distance Donor hosp to Transp hosp: 226-251",  "Distance Donor hosp to Transp hosp: 251-276",
+                   "Distance Donor hosp to Transp hosp: 276-301",  "Distance Donor hosp to Transp hosp: 301-326",
+                  "Distance Donor hosp to Transp hosp: 326-351",  "Distance Donor hosp to Transp hosp: 351-376",
+                   "Distance Donor hosp to Transp hosp: 376-401",  "Distance Donor hosp to Transp hosp: 401-501",
+                   "Distance Donor hosp to Transp hosp: 501-601",  "Distance Donor hosp to Transp hosp: 601-701",
+                   "Distance Donor hosp to Transp hosp: 701-801",  "Distance Donor hosp to Transp hosp: 801-901",
+                   "Distance Donor hosp to Transp hosp: 901-1000",  "Distance Donor hosp to Transp hosp: 1000-1250",
+                   "Distance Donor hosp to Transp hosp: 1250-1500",  "Distance Donor hosp to Transp hosp: 1500-2000",
+                   "Distance Donor hosp to Transp hosp: 2000-3000", "Distance Donor hosp to Transp hosp: 3000-4000",
+                   "Distance Donor hosp to Transp hosp: 4000-5200",
+                  
+                  
+                  "Patience seq num: 1",  
+                  "Patience seq num: 2",  
+                  "Patience seq num: 3 to 5",  
+                  "Patience seq num: 6 to 10",  
+                  "Patience seq num: 11 to 20",  
+                  "Patience seq num: 21 to 50",  
+                  "Patience seq num: 51 to 100",  
+                  "Patience seq num: 101 to 29206",
+                  
+                  "KDRI Rao: 0.6 to 1", "KDRI Rao: 1 to 1.5", "KDRI Rao: 1.5 to 2", "KDRI Rao: 2 to 3.75",
+                  
+                  "Donor age: 0 to 20 yrs", "Donor age: 20 to 40 yrs", "Donor age: 40 to 60 yrs", "Donor age:60 to 80 yrs",
+                  
+                  "Candidate age at listing: 9 to 15 yrs", "Candidate age at listing: 15 to 24 yrs", "Candidate age at listing: 24 to 45 yrs", "Candidate age at listing: 45 to 65 yrs", 
+                  "Candidate age at listing: 65 to 87 yrs",
+                  
+                  "CPRA: 0 to 0.2", "CPRA: 0.2 to 0.4", "CPRA: 0.4 to 0.6", "CPRA: 0.6 to 0.8", "CPRA: 0.8 to 1",
+                  
+                  "EPTS PCT: 0 to 0.2", 
+                  "EPTS PCT: 0.2 to 0.4",
+                  "EPTS PCT: 0.4 to 0.6", 
+                  "EPTS PCT: 0.6 to 0.8", 
+                  "EPTS PCT: 0.8 to 1",
+                  
+                  "On dialysis: Yes", 
+                  "On dialysis: No",
+                  
+                  
+                  "Is Top 20 Both airports: Not flying", 
+                  "Is Top 20 Both airports: Yes", 
+                  "Is Top 20 Both airports: No",
+                  
+                   "Origin Airport: 0 to 1 departures",
+                  "Origin Airport: 1 to 101 departures",
+                  "Origin Airport: 101 to 201 departures",
+                  "Origin Airport: 201 to 301 departures",
+                  "Origin Airport: 301 to 401 departures",
+                  "Origin Airport: 401 to 501 departures",
+                  "Origin Airport: 501 to 601 departures",
+                  "Origin Airport: 601 to 701 departures",
+                  "Origin Airport: 701 to 801 departures",
+                  "Origin Airport: 801 to 901 departures",
+                  "Origin Airport: 901 to 1000 departures",
+                  "Origin Airport: 1000 to 1100 departures",
+                  "Origin Airport: 1100 to 1200 departures",
+                  "Origin Airport: 1200 to 1300 departures",
+                  "Origin Airport: 1300 to 1400 departures",
+                  "Origin Airport: 1400 to 1500 departures",
+                  "Origin Airport: 1500 to 1600 departures",
+                  "Origin Airport: 1600 to 1700 departures",
+                  "Origin Airport: 1700 to 1800 departures",
+                  "Origin Airport: 1800 to 1900 departures",
+                  "Origin Airport: 1900 to 2000 departures",
+                  "Origin Airport: 2000 to 2500 departures",
+                  "Origin Airport: 2500 to 3000 departures",
+                  "Origin Airport: 3000 to 3500 departures",
+                  "Origin Airport: 3500 to 4000 departures",
+                  "Origin Airport: 4000 to 4500 departures",
+                  "Origin Airport: 4500 to 5000 departures",
+                  "Origin Airport: 5000 to 6000 departures",
+                  "Origin Airport: 6000 to 7000 departures",
+                  "Origin Airport: 7000 to 8000 departures",
+                  "Origin Airport: 8000 to 9000 departures",
+                  "Origin Airport: 9000 to 10000 departures",
+                  "Origin Airport: 10000 to 15000 departures",
+                  "Origin Airport: 15000 to 20000 departures",
+                  "Origin Airport: 20000 to 27000 departures",
+                  
+                  "Latest departure time: Not flying",
+                  "Latest departure time: Not direct",
+                  "Latest departure time: 12 AM",
+                  "Latest departure time: 12:01 AM to 5:59 PM",
+                  "Latest departure time: 6 PM to 7:59 PM",
+                  "Latest departure time: 8 PM to 8:59 PM",
+                  "Latest departure time: 9 PM to 9:59 PM",
+                  "Latest departure time: 10 PM to 10:59 PM",
+                  "Latest departure time: 11 PM to 11:59 PM",
+                  
+                  "Average elapsed time: Not flying",
+                  "Average elapsed time: Not direct",
+                  "Average elapsed time: Not Less than 1 hr",
+                  "Average elapsed time: 1 to 2 hrs",
+                  "Average elapsed time: 2 to 3 hrs",
+                  "Average elapsed time: 3 to 5 hrs",
+                  "Average elapsed time: 5 to 10 hrs",
+                  
+                  "Number of flights in a week: 0",
+                  "Number of flights in a week: 1 to 2",
+                  "Number of flights in a week: 3 to 5",
+                  "Number of flights in a week: 6",
+                  "Number of flights in a week: 7"
+                  
+        )
+
+colnames(all_predictors_matrix) <- matrix_names
+
+
+
+
+```
+
+```{r}
+
+
+
+
+all_predictors_matrix_sparse <- Matrix(all_predictors_matrix, sparse = TRUE)
+#all_predictors_matrix <- Matrix(all_predictors_matrix, sparse = FALSE)
+
+
+offer_accept_matrix <- as.matrix(clean_offer_accep_data_feat_model$offer_accept)
+
+
+if(!exists('simple_lasso')){
+  load('//cdrg-fs-p01/Rockswold/2024/custom_data/LASSOs_18Jul2024.RData')
+}
+simple_lasso <- glmnet(all_predictors_matrix_sparse, offer_accept_matrix, family = "binomial", alpha = 1)
+
+summary(test_lasso)
+
+
+
+cv_lasso <- cv.glmnet(all_predictors_matrix_sparse, offer_accept_matrix, family = "binomial", alpha = 1)
+
+
+best_lambda <- cv_lasso$lambda.1se
+best_lambda
+
+coef(cv_lasso)
+
+plot(test_lasso2)
+
+
+coefficients_1se <- coef(cv_lasso, s = "lambda.1se")
+
+print(coefficients_1se)
+
+save(list = c("simple_lasso", "cv_lasso"), file = '//cdrg-fs-p01/Rockswold/2024/custom_data/LASSOs_18Jul2024.RData')
+
+```
+
