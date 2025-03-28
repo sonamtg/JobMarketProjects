@@ -17,7 +17,7 @@
 - **Purpose**: Estimate the AKM model and calculate coworker fixed effects
   - Saves the dataset with fixed effects as model_results.dta
 
-### 3. `03_spillover_analysis.do`
+### 3. 03_spillover_analysis.do
 - **Purpose**: Analyze spillover effects and interaction with firm size
   - Exports regression results to LaTeX tables (spillo_tbl.tex` and inter_spillo_tbl.tex`)
  
