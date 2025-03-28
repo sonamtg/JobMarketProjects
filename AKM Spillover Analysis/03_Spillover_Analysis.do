@@ -10,14 +10,14 @@ reghdfe lws fe_id fe_firm avg_coworker_fe age_centered age_centered_sq ib1990.ye
 estimates store spillover_model
 
 * Export the spillover effect regression results to a LaTeX table
-esttab spillover_model using "number_6_table.tex", replace ///
+esttab spillover_model using "spillo_tbl.tex.tex", replace ///
     label booktabs b(5) se(5) ///
     star(* 0.10 ** 0.05 *** 0.01) ///
     title("Spillover-effect Regression Results") ///
     addnotes("Robust standard errors in parentheses." "*** p<0.01, ** p<0.05, * p<0.10") ///
 	drop(1990.year) // Exclude baseline groups 
 	
-* Explore whether the spillover effect estimated in the model aboove differs for workers in small versus large firms
+* Explore whether the spillover effect estimated in the model above differs for workers in small versus large firms
 
 * Create a binary variable to distinguish between small and large firms
 * A firm is considered "large" if it has more than 50 employees
@@ -37,7 +37,7 @@ reghdfe lws fe_id fe_firm c.avg_coworker_fe#i.large_firm age_centered age_center
 estimates store interaction_spillover_model
 
 * Export the spillover effects with an interaction regression results to a LaTeX table
-esttab interaction_spillover_model using "number_7_table.tex", replace ///
+esttab interaction_spillover_model using "inter_spillo_tbl.tex", replace ///
     label booktabs b(5) se(5) ///
     star(* 0.10 ** 0.05 *** 0.01) ///
     title("Spillover effects with interaction Regression Results") ///
