@@ -27,8 +27,8 @@ gen sum_coworker_fe = total_fe_id - fe_id
 * For each worker i in firm j at time t, calculate the number of workers in the firm
 bysort firm_id year: gen firm_size = _N
 
-* Find the average post AKM estimation fixed effects by dividing the sum of the coworkers fe by the firm size
-gen avg_coworker_fe = sum_coworker_fe / firm_size
+* Find the average post AKM estimation fixed effects by dividing the sum of the coworkers' fe by the firm size - 1 to exclude the own fe
+gen avg_coworker_fe = sum_coworker_fe / firm_size - 1
 
 * Add a label to describe Average Coworker FE
 label var avg_coworker_fe "Average Coworker FE"
