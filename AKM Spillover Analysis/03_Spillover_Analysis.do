@@ -10,7 +10,7 @@ reghdfe lws fe_id fe_firm avg_coworker_fe age_centered age_centered_sq ib1990.ye
 estimates store spillover_model
 
 * Export the spillover effect regression results to a LaTeX table
-esttab spillover_model using "spillo_tbl.tex.tex", replace ///
+esttab spillover_model using "spillo_tbl.tex", replace ///
     label booktabs b(5) se(5) ///
     star(* 0.10 ** 0.05 *** 0.01) ///
     title("Spillover-effect Regression Results") ///
