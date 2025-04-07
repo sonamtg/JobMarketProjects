@@ -1,0 +1,112 @@
+---
+title: "IMDB Scraping"
+author: "Sonam T Gurung"
+date: "4/30/2023"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(rvest)
+library(lubridate)
+library(tidytext)
+library("textdata")
+
+```
+
+```{r}
+
+# function that scrapes the information from the entire season from imdb
+scrape_info_season <- function(url){
+robotstxt::paths_allowed(url)
+
+title_ep <- read_html(url) %>% 
+  html_nodes("#episodes_content strong a") %>% 
+  html_text()
+
+imdb_rating <- read_html(url) %>% 
+  html_nodes(".ipl-rating-star.small .ipl-rating-star__rating") %>% 
+  html_text()
+
+season_episode_num <- read_html(url) %>% 
+  html_nodes(".zero-z-index div") %>% 
+  html_text()
+
+description <- read_html(url) %>% 
+  html_nodes(".item_description") %>% 
+  html_text()
+
+num_ratings <- read_html(url) %>% 
+  html_nodes(".ipl-rating-star__total-votes") %>% 
+  html_text()
+
+air_date <- read_html(url) %>% 
+  html_nodes(".airdate") %>% 
+  html_text()
+  
+new_season <- tibble(title_ep, imdb_rating, season_episode_num, description, num_ratings, air_date)
+rbind(seasons, new_season)
+
+}
+```
+
+```{r}
+
+# creating a tibble to store information about all the seasons
+
+title_ep <- c("title_ep")
+imdb_rating <- c("imdb_rating")
+season_episode_num <- c("season_and_episode_num")
+description <- c("Description")
+num_ratings <- c("Number of ratings")
+air_date <- c("Air date")
+seasons <- tibble(title_ep, imdb_rating, season_episode_num, description, num_ratings, air_date)
+
+# scraping the title, imdb rating, and season number from imdb for seasons 1 - 20
+url <- "https://www.imdb.com/title/tt0182576/episodes?season="
+for (i in 1:20) {
+  season_url = str_c(url, i, sep = "")
+  seasons <- scrape_info_season(season_url)
+}
+```
+
+```{r}
+
+# converting the column num_ratings into a numeric type
+seasons <- seasons %>% 
+  mutate(num_ratings = parse_number(num_ratings))
+
+# separating the season num and episode num
+seasons <- seasons %>% 
+  separate(season_episode_num, into = c("season_num", "episode_num"), sep = ", ")
+
+# deleting the first row since it is just a placeholder
+seasons <- seasons %>% 
+  drop_na(episode_num) %>% 
+  mutate(air_date = dmy(air_date))
+
+```
+
+```{r}
+# since we are working with 7 episodes from each season
+
+seasons_first7_eps <- seasons %>% 
+  mutate(episode_num = parse_number(episode_num)) %>% 
+  filter(episode_num <= 7)
+```
+
+
+
+
+```{r}
+# writing the info scraped until season 20 to a csv file
+
+write_csv(seasons, "~/Mscs 264 S23/Project/Final Project Sonam-Inti/season1-20-info.csv")
+write_csv(seasons_first7_eps, "~/Mscs 264 S23/Project/Final Project Sonam-Inti/season1-20-ep1-7.csv")
+
+```
+

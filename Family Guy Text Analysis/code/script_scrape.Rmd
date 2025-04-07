@@ -1,0 +1,109 @@
+---
+title: "Inti & Sonam Final Project"
+author: "Al Ashir Intisar"
+date: "4/30/2023"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Scraping the first 7 episodes of all 21 seasons of the popular sitcom show  "The Family Guy" from website www.springfieldspringfield.co.uk. The link to scripts is: https://www.springfieldspringfield.co.uk/episode_scripts.php?tv-show=family-guy&season=1
+
+
+Creating the function scrape_scripts 
+
+```{r, warning=FALSE, message=FALSE}
+library(rvest)
+library(tidyverse)
+```
+
+
+
+Functions definition
+```{r}
+# #creating a data frame structure to store the scraped episode data
+# Title <- c("Title")
+# 
+# Script <- c("Content")
+# 
+# script_df <- tibble(Title, Script)
+# 
+# 
+# #scrape_script function definition
+# scrape_scripts <- function(script_df, ep_url){
+#   robotstxt::paths_allowed(ep_url)
+# 
+#   Script <- read_html(ep_url) %>%
+#     html_nodes(".scrolling-script-container") %>%
+#     html_text()
+# 
+#   Title <- read_html(ep_url) %>%
+#     html_nodes("h1") %>%
+#     html_text()
+# 
+#   new_ep <- tibble(Title, Script)
+#   rbind(script_df, new_ep)
+# 
+# }
+# 
+# #testing the function with 1 url at a time
+# ep_url <- "https://www.springfieldspringfield.co.uk/view_episode_scripts.php?tv-show=family-guy&episode=s01e01"
+# 
+# 
+# #testing if the function works with single iteration
+# script_df
+# 
+# #call to scrape function
+# script_df <- scrape_scripts(script_df, ep_url)
+# 
+# #calling to see if it added or not
+# script_df
+```
+
+
+Scraping the scripts
+
+```{r}
+# base_url <- "https://www.springfieldspringfield.co.uk/view_episode_scripts.php?tv-show=family-guy&episode="
+# 
+# #creating a data frame structure to store the scraped episode data
+# Title <- c("Title")
+# 
+# Script <- c("Content")
+# 
+#  script_df <- tibble(Title, Script)
+# 
+#  script_df
+# 
+# #time to run the whole loop
+#  for (i in 1:21) {
+# 
+#    for (j in 1:7) {
+# 
+#      if(i <10){
+#        url_ep <- str_c(base_url, "s0", i, "e0", j)
+#        #print(url_ep)
+#        script_df <- scrape_scripts(script_df, url_ep)
+# 
+#      }
+#      else{
+#        url_ep <- str_c(base_url, "s", i, "e0", j)
+#        #print(url_ep)
+#        script_df <- scrape_scripts(script_df, url_ep)
+#      }
+# 
+#    }
+#  }
+# 
+#  script_df
+# 
+# #untidy_script writing it to our folder so that we don't have to scrape everytime time
+# write_csv(script_df, "~/Mscs 264 S23/Project/Final Project Sonam-Inti/untidy_scripts.csv")
+# 
+
+```
+
+
+
+
+
