@@ -1,0 +1,593 @@
+---
+title: "Family Guy"
+runtime: shiny
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    toc: yes
+    theme: flatly
+    vertical_layout: scroll
+resource_files:
+- familyguy.png
+- sonaminti.jpg
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(rvest)
+library(lubridate)
+library(tidytext)
+library("textdata")
+library(flexdashboard)
+library(wordcloud)
+library(treemapify)
+library(magick)
+library(htmltools)
+
+
+
+```
+
+Introduction
+============
+
+Row {data-height=500}
+-------------------------------------
+
+### **By Al-Ashir Intisar and Sonam T Gurung**
+  
+![](familyguy.png)
+
+
+### 
+
+
+![](sonaminti.jpg)
+
+
+Column
+---------
+
+###
+
+<style>
+.my-style {
+  color: black;
+  font-family: arial;
+  font-size: 16px;
+}
+</style>
+
+<span style="font-size: 20px;">**About**</span>
+
+<span class="my-style"> Family Guy, an American animated sitcom that has been on the air for over four decades, recently concluded its 21st season, potentially marking its final season. Our project aimed to delve into the factors that have contributed to Family Guy's enduring popularity and its comparatively higher IMDb rating among sitcoms. To achieve this, we conducted an in-depth analysis of the show's episode scripts, exploring the transformations the series has undergone over time. </span>
+
+<span class="my-style"> In pursuit of our objectives, we collected data from two sources: IMDb, which provided us with valuable information and statistics about the show, and the Springfield website, where we acquired the scripts for detailed text analysis. Our decision is to focus our work on the first seven episodes of the first 20 seasons. By merging and analyzing these two datasets, we ultimately compiled our comprehensive final dataset.
+</span>
+
+<span class="my-style">**Data Sources:-**</span>
+
+<span class="my-style">[IMDb](https://www.imdb.com/title/tt0182576/)</span>
+
+<span class="my-style">[Springfield](https://www.springfieldspringfield.co.uk/episode_scripts.php?tv-show=family-guy&season=1)</span>
+
+<span class="my-style">**Image Citation:-**</span>
+
+<span class="my-style">IMDb. (2023). Family Guy. Retrieved May 16, 2023, from https://www.imdb.com/title/tt0182576/episodes?season=1
+
+
+</span>
+
+
+
+
+
+```{r}
+all_words <- read_csv("all_words.csv")
+lex_nrc <- read_csv("lex_nrc.csv")
+season_num_list <- all_words$season_num %>% unique()
+episode_num_list <- all_words$episode_num %>% unique()
+lex_afinn <- read_csv("lex_afinn.csv")
+family_guy_tfidf <- read_csv("family_guy_tfidf.csv")
+
+
+```
+
+
+Exploring IMDB rating correlations
+=================================
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+### Word Count vs IMDB Rating {data-height=750}
+
+**Observations & Interpretations:** *The graph depicts the IMDb ratings and word counts of the first 20 seasons of Family Guy. The x-axis represents IMDb ratings for each episode (1-7), while the y-axis represents the word count in the episode scripts. The legend on the right indicates the episode number. No clear correlation is evident between the ratings and word counts, although most episodes fall within the 2500-3500 word count range. Interestingly, some highly rated episodes have a higher word count. Additionally, there is an observable trend of higher word counts in the earlier episodes compared to the later ones, which will be further explored in the subsequent window titled "IMDb Rating Trend with Episode Number".*
+
+```{r make_plot5, echo=FALSE, fig.width=5, fig.height=5}
+season_num_list_all <- append(season_num_list, "All Seasons")
+
+inputPanel(
+  selectInput("season5", label = "Select Season:",
+              choices = season_num_list_all, selected = "All Seasons")
+
+)
+
+renderPlot({
+  
+  if(input$season5 != "All Seasons"){
+
+  all_words %>%
+    filter(season_num == input$season5) %>%
+    mutate(episode_num = as.factor(episode_num)) %>% 
+    ggplot(aes(x = imdb_rating, y = word_count, color = season_num)) +
+    geom_point(size = 3)+ 
+    theme(plot.margin = margin(b = 250, l = 100, r = 100))+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between IMDb rating and Word Count per Episode", x = "IMDB ratings", y = "Word Count per episode", color = "Season Number:")
+  }
+  else{
+    all_words %>%
+      mutate(episode_num = as.factor(episode_num)) %>% 
+      ggplot(aes(x = imdb_rating, y = word_count, color = episode_num)) +
+      geom_point()+ 
+      theme(plot.margin = margin(b = 250, l = 100, r = 100))+
+      theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between IMDb rating and Word Count per Episode", x = "IMDB ratings", y = "Word Count per episode", color = "Season Number:")
+    
+  }
+
+
+})
+
+```
+
+### IMDB Rating trend with Episode Number  {data-height=750}
+
+**Observations & Interpretations:** *The graph displays distinct colored lines representing each episode order (first, second, etc.) across 20 seasons. The legend on the right corresponds to the average rating of these episodes, with the first episodes of each season ranked as 1. Observing the lines, it is evident that the initial episodes tend to have a higher word count. Furthermore, the legend ranking confirms that these episodes has the highest average ratings. To delve deeper into the connection between episode order and rating, we will investigate a box plot on the subsequent page titled "IMDb Rating vs. Episode Number Boxplot."*
+
+```{r make_plot6, echo=FALSE, fig.width=5, fig.height=5}
+library(dplyr)
+library(forcats)
+
+renderPlot({
+
+    all_words %>%
+      mutate(episode_num = as.factor(episode_num)) %>% 
+      mutate(episode_num = fct_reorder(episode_num, imdb_rating, .fun = mean, .desc = TRUE)) %>% 
+      ggplot(aes(x = imdb_rating, y = word_count, color = episode_num)) +
+      geom_point()+ 
+      geom_smooth()+
+      theme(plot.margin = margin(b = 180, l = 100, r = 100))+
+      theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between IMDb rating and Word Count per Episode", x = "IMDB ratings", y = "Word Count per episode", color = "Episode Number:")
+    
+
+    
+})
+```
+
+### IMDB Rating vs Episode Number boxplot  {data-height=600}
+
+**Observations & Interpretations:** *The boxplot does not exhibit a discernible trend between IMDb ratings and episode number, except for a general tendency for the first episodes to receive higher rankings compared to the rest. This observation may be attributed to the first episodes consistently garnering a greater number of reviews, thereby mitigating the impact of outliers on their average ratings. In contrast, the subsequent episodes tend to receive fewer reviews, resulting in outliers exerting a greater influence on their IMDb ratings. To delve deeper into this concept, we will delve into the following section titled "Number of Ratings vs. IMDb Ratings."*
+
+```{r make_plot11, echo=FALSE, fig.width=5, fig.height=5}
+library(dplyr)
+library(forcats)
+
+renderPlot({
+
+    all_words %>%
+      mutate(episode_num = as.factor(episode_num)) %>% 
+      ggplot(aes(x = imdb_rating, y = episode_num, fill = episode_num)) +
+      geom_boxplot()+ 
+      theme(plot.margin = margin(b = 180, l = 100, r = 100))+
+      theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between IMDb rating and Episode number", x = "IMDB ratings", y = "Episode Number", fill = "Episode Number:")
+    
+
+    
+
+
+})
+```
+
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+### Number of Ratings vs IMDB Ratings {data-height=750}
+
+**Observations & Interpretations:** *The graph illustrates a discernible positive correlation between ratings and the number of reviews for each episode on the IMDb website. To further investigate the distribution of ratings in relation to the number of reviews, the subsequent section titled "Number of Ratings vs. Episode Number" will provide a closer examination of whether specific episodes received a higher number of ratings compared to others.*
+
+```{r make_plot7, echo=FALSE}
+
+
+inputPanel(
+  selectInput("season6", label = "Select Season:",
+              choices = season_num_list_all, selected = "All Seasons")
+
+)
+
+renderPlot({
+
+  if(input$season6 == "All Seasons") {
+  all_words %>%
+    mutate(episode_num = as.factor(episode_num)) %>% 
+    ggplot(aes(x = imdb_rating, y = num_ratings)) +
+    geom_point(color = "blue")+ 
+    geom_smooth(color = "black")+
+    theme(plot.margin = margin(b = 180, l = 100, r = 100))+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between IMDB rating and Number of Ratings per Episode", x = "IMDB Ratings", y = "Number of Ratings per episode")
+  }
+  else{
+    all_words %>%
+    filter(season_num == input$season6) %>%
+    mutate(episode_num = as.factor(episode_num)) %>% 
+    ggplot(aes(x = imdb_rating, y = num_ratings, color = episode_num)) +
+    geom_point()+ 
+    theme(plot.margin = margin(b = 180, l = 100, r = 100))+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between IMDB rating and Number of Ratings per Episode", x = "IMDB Ratings", y = "Number of Ratings per episode", color = "Episode Number")
+    
+  }
+
+})
+
+```
+
+
+### Number of Ratings vs Episode Number {data-height=600}
+
+**Observations & Interpretations:** *The boxplot supports our earlier finding that the first episodes of each season receive a greater number of ratings and reviews, thereby reducing the impact of outliers on the average ratings for individual episodes on the IMDb website. This phenomenon potentially contributes to the generally higher ratings observed for the first episodes, as discussed in the preceding section.*
+
+```{r make_plot12, echo=FALSE}
+
+renderPlot({
+
+    all_words %>%
+    mutate(episode_num = as.factor(episode_num)) %>% 
+    ggplot(aes(x = num_ratings, y = episode_num, color = episode_num)) +
+    geom_point()+ 
+    geom_boxplot()+
+    theme(plot.margin = margin(b = 180, l = 100, r = 100))+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between Episode Number and Number of Ratings per Episode", x = "Number of Ratings per episode", y = "Episode Number", color = "Episode Number")
+    
+
+})
+
+```
+
+
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+
+### Air Date vs IMDB Rating {data-height=750}
+
+**Observations & Interpretations:** *The graph examines the evolution of ratings throughout the series over time. Initially, from seasons 1 to 5, the ratings consistently clustered around the high range of 7-8, indicating a strong level of audience appreciation. However, subsequent to 2007, there was increased variability in ratings within each season, accompanied by an overall downward trend. This suggests a shift in audience sentiment over time, reflecting a potentially declining level of satisfaction with the episodes. We will explore this declining trend over time with text sentiment of the scripts in the following window titled "Evolution of sentiments depicted over the years"*
+
+```{r}
+
+inputPanel(
+  selectInput("airdate", label = "Select Season:",
+              choices = season_num_list_all, selected = "All Seasons")
+
+)
+
+
+renderPlot({
+  
+  if(input$airdate == "All Seasons"){
+
+  all_words %>%
+    mutate(air_date = ymd(air_date), season_num = as.factor(parse_number(season_num))) %>% 
+    ggplot(aes(x = air_date, y = imdb_rating, color = season_num)) +
+    geom_point()+ 
+    scale_color_manual(values = c("#FF0000", "#00FF00","#FF0000", "#00FF00","#FF0000", "#00FF00","#FF0000", "#00FF00","#FF0000", "#00FF00","#FF0000", "#00FF00","#FF0000", "#00FF00","#FF0000", "#00FF00","#FF0000", "#00FF00","#FF0000", "#00FF00"))+
+    #geom_smooth()+ doesn't work for some reason
+    theme(plot.margin = margin(b = 250, l = 100, r = 100))+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between Episode Air Date and IMDB Rating", x = "Air Date", y = "IMDB Rating", color = "Season Number:")
+    
+  }
+  else{
+    all_words %>%
+    filter(season_num == input$airdate) %>% 
+    mutate(air_date = ymd(air_date), episode_num = as.factor(episode_num)) %>% 
+    ggplot(aes(x = air_date, y = imdb_rating, color = episode_num)) +
+    geom_point()+ 
+    theme(plot.margin = margin(b = 250, l = 100, r = 100))+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between Episode Air Date and IMDB Rating", x = "Air Date", y = "IMDB Rating", color = "Episode Number:")
+    
+  }
+
+
+})
+
+```
+
+
+### Air Date vs IMDB Rating (Time Range) {data-height=600}
+
+**Observations & Interpretations:** *This graph provides the flexibility to select a specific time range, enabling us to observe the relationship between ratings and air date within that selected period. Users can explore and analyze the trend in ratings over time, gaining insights into how the ratings have fluctuated or evolved within their desired timeframe.*
+
+
+```{r}
+
+inputPanel(
+  dateRangeInput('dateRange',
+      label = 'Date range input: yyyy-mm-dd',
+      start = ymd("1990-01-01"), end = Sys.Date() 
+    )
+
+)
+
+#Sys.Date() - 365
+renderPlot({
+  
+  from = ymd(input$dateRange[1])
+  to = ymd(input$dateRange[2])
+
+  all_words %>%
+    mutate(air_date = ymd(air_date), season_num = as.factor(parse_number(season_num))) %>% 
+    filter(air_date >= from)%>%
+    filter(air_date <= to) %>% 
+    ggplot(aes(x = air_date, y = imdb_rating, color = season_num)) +
+    geom_point()+ 
+    theme(plot.margin = margin(b = 180, l = 100, r = 100))+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))+
+    labs(title = "Exploring correlation between Episode Air Date and IMDB Rating", x = "Air Date", y = "IMDB Rating", color = "Season Number:")
+
+
+})
+```
+
+
+
+Evolution of sentiments depicted over the years
+============
+
+Row {data-height=700}
+-------------------------------------
+
+### Text Sentiment of Episodes {data-height=700}
+
+*This graph illustrates the cumulative sentiment of each episode by aggregating words associated with different sentiments. The y-axis represents the sentiments, while the x-axis displays the word count corresponding to each specific sentiment. In our analysis, we utilized the lex_nrc dataset, which associates words with specific sentiments. This dataset provided the basis for attributing sentiments to the words used in the scripts.*
+
+```{r make_plot4, echo=FALSE}
+
+inputPanel(
+  selectInput("season9", label = "Select Season:",
+              choices = season_num_list, selected = "S1"),
+  selectInput("sentiment_s_ep", label = "Select Episode:",
+              choices = episode_num_list, selected = "1")
+
+)
+
+renderPlot({
+
+  all_words %>%
+    filter(season_num == input$season9) %>%
+    filter(episode_num == input$sentiment_s_ep) %>% 
+    inner_join(lex_nrc) %>%
+    count(sentiment, word, sort = TRUE) %>%
+    group_by(sentiment) %>%
+    slice_max(n, n = 15) %>%
+    mutate(sum_val = sum(n)) %>% 
+    ungroup %>%
+    ggplot(aes(x = sentiment, y = sum_val, fill = sentiment)) +
+      geom_col(show.legend = FALSE) +
+      coord_flip()+ 
+    theme(plot.margin = margin(b = 250, r = 200, t = 50, l = 200))+
+    labs(title = str_c("Text Sentiment of ", 
+                       input$season9, " Ep", input$sentiment_s_ep), 
+         x = "Sentiment Type", y = "Sentiment Score", fill = "Sentiment Type")+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))
+
+})
+
+```
+
+
+Row {data-height=750}
+-------------------------------------
+
+### Text Sentiment of Seasons {data-height=750}
+
+*This graph provides a more detailed breakdown compared to the previous graph. It displays the words associated with specific sentiments and their corresponding counts for each episode. Each graph corresponds to a particular sentiment, with the y-axis representing the words and the x-axis representing the word count.*
+
+```{r make_plot9, echo=FALSE}
+
+inputPanel(
+  selectInput("season4", label = "Select Season:",
+              choices = season_num_list, selected = "S1")
+
+)
+
+renderPlot({
+
+  all_words %>%
+    filter(season_num == input$season4) %>%
+    inner_join(lex_nrc) %>%
+    count(sentiment, word, sort = TRUE) %>%
+    group_by(sentiment) %>%
+    slice_max(n, n = 15) %>%
+    ungroup %>%
+    ggplot(aes(x = fct_reorder(word, n), y = n, fill = sentiment)) +
+      geom_col() +
+      coord_flip() +
+      facet_wrap(~ sentiment, scales = "free", ncol = 4) + 
+    theme(plot.margin = margin(b = 180, l = 100, r = 100))+
+    labs(title = str_c("Detailed Text Sentiment of ", input$season4), y = "Sentiment Type", x = "Sentiment Score", fill = "Sentiment Type")+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))
+
+
+
+})
+```
+Row {data-height=600}
+-------------------------------------
+### Positive/Negative Sentiment Scores  
+
+*This graph presents an overview of the sentiment scores for each episode, reflecting the overall usage of positive or negative words throughout the episode. A higher sentiment score indicates a greater prevalence of positive words, while a lower score suggests a higher proportion of negative words. To calculate these scores, we employed the lex bing dataset, which associates each word with either a positive or negative sentiment.*
+
+```{r make_plot3, echo=FALSE}
+
+
+inputPanel(
+  selectInput("season10", label = "Select Season:", 
+              choices = season_num_list, selected = "S1")
+  
+)
+
+renderPlot({
+  
+all_words %>% 
+    filter(season_num == input$season10) %>%
+    group_by(input$season3, episode_num) %>%
+    inner_join(lex_afinn) %>% 
+    summarize(sentiment = sum(value)) %>% 
+    mutate(episode_num = as.factor(episode_num)) %>% 
+    mutate(score_polarity = ifelse(sentiment < 0, "Negative", "Positive")) %>% 
+    ggplot(aes(x = episode_num, y = sentiment, fill = score_polarity)) +
+    geom_col(show.legend = TRUE) + 
+    theme(plot.margin = margin(b = 180, l = 100, r = 100))+
+    labs(title = str_c("Positive/Negative Sentiment Score for each episode in ", input$season10), y = "Sentiment score", x = "Episode", fill = "Sentiment Type")+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))
+  
+  
+})
+
+```
+
+Column {data-height=750}
+-------------------------------------
+### Observation
+
+*The final bar graph depicts an intriguing relationship between the Sentiment Score and the Average IMDb rating for each season. Notably, there is a discernible pattern where higher sentiment scores correspond to lower Average IMDb ratings. Conversely, seasons with lower sentiment scores tend to have higher Average IMDb ratings. This suggests that viewers tend to enjoy the show more when it incorporates a greater proportion of negative words, and conversely, the enjoyment diminishes when a higher proportion of positive words are used. The observation implies that there is a preference among viewers for content that elicits negative emotions or engages them in a different way. The use of more negative words seems to contribute to a more enjoyable experience for the audience. However, it's important to acknowledge that this finding is based on the correlation observed in the data, and individual preferences may still vary.*
+
+###
+
+```{r}
+
+all_words %>% 
+    group_by(season_num) %>%
+    inner_join(lex_afinn) %>% 
+    summarize(sentiment = sum(value), avg_rating = mean(imdb_rating)) %>% 
+    mutate(score_polarity = ifelse(sentiment < 0, "Negative", "Positive")) %>% 
+    mutate(season_num = as_factor(parse_number(season_num))) %>% 
+    ggplot(aes(x = season_num, y = sentiment, fill = avg_rating)) +
+    geom_col(show.legend = TRUE) + 
+    theme(plot.margin = margin())+
+    labs(title = "Sentiment and Average IMDb Rating Trend", y = "Sentiment score", x = "Season", fill = "Average Rating")+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 2))
+```
+
+
+Text Analysis
+=======================================
+
+Row {data-height=600}
+-------------------------------------
+    
+### Word Cloud for Episodes 
+
+*The word cloud visually represents the most frequently occurring words in an episode, with the size of each word's font indicating its frequency.*
+
+```{r}
+
+inputPanel(
+  selectInput("cloud_season", label = "Season Num:",
+              choices = season_num_list, selected = "S1"),
+  selectInput("cloud_episode", label = "Episode Num:",
+              choices = episode_num_list, selected = "1")
+
+)
+
+renderPlot({
+  all_words %>%
+    filter(season_num == input$cloud_season, episode_num == (input$cloud_episode)) %>%
+    anti_join(stop_words) %>%
+    count(word) %>%
+    with(wordcloud(word, n, max.words = 80, scale = c(3, 0.5), colors = input$cloud_episode))+
+    theme(plot.margin = margin(b = 180, l = 100, r = 100))
+    
+
+})
+```
+
+
+### Important Words for Seasons
+
+*The word cloud generated using tf-idf (term frequency-inverse document frequency) highlights words based on their importance within a season. The tf-idf algorithm considers not only the frequency of a word within a specific season but also its rarity across all seasons. Consequently, words with higher tf-idf scores are deemed more significant for that particular season. By employing tf-idf, the word cloud showcases words that possess greater contextual relevance and distinctiveness within the season. This approach enables the identification of words that carry more weight in terms of their contribution to the overall content and themes explored in that specific season, moving beyond merely emphasizing character names.*
+
+
+```{r make_plot8, echo=FALSE}
+
+inputPanel(
+  selectInput("season_imp", label = "Season Num:", 
+              choices = season_num_list, selected = "S1")
+  
+    
+)
+
+renderPlot({
+  family_guy_tfidf %>%
+    group_by(season_num) %>%
+    filter(season_num == input$season_imp) %>% 
+    arrange(desc(tf_idf)) %>%
+    slice_max(tf_idf, n = 10) %>% 
+    ungroup %>%
+    ggplot(aes(x = fct_reorder(word, tf_idf), y = tf_idf, fill = season_num)) +
+      geom_col(show.legend = FALSE) +
+      coord_flip() + 
+    theme(plot.margin = margin(b = 260, l = 100, r = 100))+
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 1))+
+    labs(title = str_c("Top 10 words based on tf-idf score for ", input$season_imp), y = "tf-idf score", x = "Important Words")
+  
+  
+})
+
+```
+
+
+Characters
+=================================
+
+Row {data-height=600}
+-------------------------------------
+### Character Importance Treemap
+
+*The character-based plots are exclusively available for Season 1 due to the availability of data specifically identifying which characters spoke each line during that season. Unfortunately, we were only able to acquire such detailed character information for Season 1, limiting the scope of the plots to this particular season. Using this treemap, we can see how much each character spoke in comparison to other characters. The larger the area, the more words are spoken. We were surprised by this. Although we expected Peter to have the most words in all the episodes, that wasn’t the case. In four episodes, Lois spoke the most often, whereas Peter spoke the most in two episodes, and Stewie spoke the most in one. It is likely that having a partner as unpredictable as Peter makes Lois talk a lot.*
+
+```{r make_plot10, echo=FALSE}
+characters <- read_csv("char_words_s1.csv")
+
+inputPanel(
+  selectInput("episode2", label = "Episode No:", 
+              choices = episode_num_list, selected = "1")
+  
+)
+
+renderPlot({
+
+characters %>% 
+  mutate(episode_num = as.numeric(str_sub(id, 4, 4))) %>% 
+  # excluding the ":" at the end of the string
+  mutate(Character = str_sub(Character, 1, nchar(Character) - 1)) %>% 
+  filter(episode_num == input$episode2) %>% 
+  ggplot(aes(area = char_words, fill = Character, label = Character))+
+  geom_treemap(show.legend = FALSE) +
+  geom_treemap_text(place = "centre",size = 8) +
+  labs(title = str_c("Tree map for Season 1, Episode ", input$episode2)) + 
+    theme(plot.margin = margin(b = 180, l = 100, r = 100))
+  
+})
+
+```
+
+
